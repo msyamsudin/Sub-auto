@@ -40,8 +40,8 @@ class SubAutoApp(ctk.CTk):
     
     APP_TITLE = "Sub-auto"
     APP_VERSION = "1.2.0"
-    WINDOW_SIZE = (700, 700)
-    MIN_SIZE = (650, 600)
+    WINDOW_SIZE = (700, 520)
+    MIN_SIZE = (650, 480)
     
     def __init__(self):
         super().__init__()
@@ -156,7 +156,7 @@ class SubAutoApp(ctk.CTk):
         """Setup the main UI - single page layout."""
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)  # Content area expands
-        self.grid_rowconfigure(2, weight=0)  # Footer fixed
+        self.grid_rowconfigure(1, weight=1)  # Content area expands
         
         # Custom Title Bar (replaces Windows default)
         self.title_bar = CustomTitleBar(
@@ -171,7 +171,7 @@ class SubAutoApp(ctk.CTk):
         
         # Main content - scrollable
         self.content = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=SPACING["lg"], pady=SPACING["md"])
+        self.content.grid(row=1, column=0, sticky="nsew", padx=SPACING["sm"], pady=(0, SPACING["sm"]))
         self.content.grid_columnconfigure(0, weight=1)
         
         # Normal view container
@@ -210,7 +210,7 @@ class SubAutoApp(ctk.CTk):
             title="Select Video File",
             state="active"
         )
-        self.step1.pack(fill="x", pady=(0, SPACING["md"]))
+        self.step1.pack(fill="x", pady=(0, SPACING["sm"]))
         
         content = self.step1.get_content_frame()
         
@@ -230,7 +230,7 @@ class SubAutoApp(ctk.CTk):
             title="Select Subtitle Track",
             state="inactive"
         )
-        self.step2.pack(fill="x", pady=(0, SPACING["md"]))
+        self.step2.pack(fill="x", pady=(0, SPACING["sm"]))
         
         content = self.step2.get_content_frame()
         
@@ -257,7 +257,7 @@ class SubAutoApp(ctk.CTk):
             title="Translation Options",
             state="inactive"
         )
-        self.step3.pack(fill="x", pady=(0, SPACING["md"]))
+        self.step3.pack(fill="x", pady=(0, SPACING["sm"]))
         
         content = self.step3.get_content_frame()
         
@@ -274,7 +274,7 @@ class SubAutoApp(ctk.CTk):
             options=["English", "Japanese", "Korean", "Chinese", "Auto-detect"],
             default_value="English"
         )
-        self.source_lang_row.grid(row=0, column=0, sticky="ew", padx=(0, SPACING["md"]), pady=SPACING["sm"])
+        self.source_lang_row.grid(row=0, column=0, sticky="ew", padx=(0, SPACING["sm"]), pady=SPACING["xs"])
         self.source_lang_row.label.configure(width=50)
         
         # Target language
@@ -285,7 +285,7 @@ class SubAutoApp(ctk.CTk):
             options=["Indonesian"],
             default_value="Indonesian"
         )
-        self.target_lang_row.grid(row=0, column=1, sticky="ew", padx=(SPACING["md"], 0), pady=SPACING["sm"])
+        self.target_lang_row.grid(row=0, column=1, sticky="ew", padx=(SPACING["sm"], 0), pady=SPACING["xs"])
         self.target_lang_row.label.configure(width=50)
         
         # Model selection row
@@ -316,16 +316,28 @@ class SubAutoApp(ctk.CTk):
         )
         self.model_dropdown.grid(row=0, column=1, padx=SPACING["sm"], pady=SPACING["sm"])
         
-        # Status indicator
+        # Status indicator with token estimate below
+        status_frame = ctk.CTkFrame(model_frame, fg_color="transparent")
+        status_frame.grid(row=0, column=2, sticky="w", padx=SPACING["sm"])
+        
         self.model_status = ctk.CTkLabel(
-            model_frame,
+            status_frame,
             text="⚠ Not connected",
             text_color=COLORS["text_muted"],
             font=(FONTS["family"], FONTS["small_size"])
         )
-        self.model_status.grid(row=0, column=2, sticky="w", padx=SPACING["sm"])
+        self.model_status.pack(side="left")
+
+        # Cost estimate label (inline)
+        self.cost_estimate_label = ctk.CTkLabel(
+            status_frame,
+            text="",
+            font=(FONTS["family"], FONTS["small_size"]),
+            text_color=COLORS["success"]
+        )
+        self.cost_estimate_label.pack(side="left", padx=(SPACING["sm"], 0))
         
-        # Connect button
+        # Connect button (only show if not auto-connected)
         self.validate_btn = ctk.CTkButton(
             model_frame,
             text="Connect",
@@ -333,21 +345,17 @@ class SubAutoApp(ctk.CTk):
             command=self._validate_api,
             **get_button_style("secondary")
         )
-        self.validate_btn.grid(row=0, column=3, padx=SPACING["md"], pady=SPACING["sm"])
-
-        # Cost estimate label (next to Connect button)
-        self.cost_estimate_label = ctk.CTkLabel(
-            model_frame,
-            text="",
-            font=(FONTS["family"], FONTS["small_size"]),
-            text_color=COLORS["success"]
-        )
-        self.cost_estimate_label.grid(row=0, column=4, padx=SPACING["sm"], pady=SPACING["sm"])
+        # Initially hidden if we auto-connect, shown on error
+        # self.validate_btn.grid(row=0, column=3, padx=SPACING["md"], pady=SPACING["sm"])
     
     def _create_footer(self):
         """Create footer with action buttons."""
-        footer = ctk.CTkFrame(self, fg_color="transparent")
-        footer.grid(row=2, column=0, sticky="ew", padx=SPACING["lg"], pady=SPACING["md"])
+        # Add separator line
+        separator = ctk.CTkFrame(self.normal_view, height=2, fg_color=COLORS["bg_medium"])
+        separator.pack(fill="x", pady=(SPACING["md"], SPACING["sm"]))
+        
+        footer = ctk.CTkFrame(self.normal_view, fg_color="transparent")
+        footer.pack(fill="x", pady=SPACING["sm"])
         footer.grid_columnconfigure(0, weight=1)
         
         # Left side - status
@@ -369,7 +377,7 @@ class SubAutoApp(ctk.CTk):
             command=self._reset_app,
             **get_button_style("secondary")
         )
-        self.reset_btn.pack(side="left", padx=(0, SPACING["md"]))
+        self.reset_btn.pack(side="left", padx=(0, SPACING["lg"]))
         
         self.show_summary_btn = ctk.CTkButton(
             buttons,
@@ -378,7 +386,7 @@ class SubAutoApp(ctk.CTk):
             command=self._show_last_summary,
             **get_button_style("secondary")
         )
-        self.show_summary_btn.pack(side="left", padx=(0, SPACING["md"]))
+        self.show_summary_btn.pack(side="left", padx=(0, SPACING["lg"]))
         self.show_summary_btn.pack_forget()
 
         self.start_btn = ctk.CTkButton(
@@ -642,6 +650,10 @@ class SubAutoApp(ctk.CTk):
                 self.selected_track_id = self.subtitle_tracks[0].track_id
                 self._update_step_states()
                 
+                # Auto-collapse step 1 to save space
+                self.step1.collapse()
+                self.after(50, self._reset_scroll)
+                
         except Exception as e:
             self.no_tracks_label.configure(
                 text=f"Error: {str(e)}",
@@ -657,6 +669,12 @@ class SubAutoApp(ctk.CTk):
                 if item.track_id != track_id:
                     item.deselect()
             self.selected_track_id = track_id
+            
+            # Auto-collapse Step 2 when there are multiple tracks (>2) to save space
+            if len(self.track_items) > 2:
+                self.step2.collapse()
+                # Workaround: Reset scroll to prevent content disappearance when collapsing from bottom
+                self.after(50, self._reset_scroll)
         else:
             if self.selected_track_id == track_id:
                 self.selected_track_id = None
@@ -725,12 +743,16 @@ class SubAutoApp(ctk.CTk):
                 text="✓ Connected",
                 text_color=COLORS["success"]
             )
-            self.validate_btn.configure(text="✓")
+            # Remove redundant button
+            self.validate_btn.grid_forget()
             self.toast.success("API connected successfully")
         else:
             self.api_validated = False
             self.model_dropdown.configure(state="disabled")
             self.model_status.configure(text=result.message, text_color=COLORS["error"])
+            # Show retry button
+            self.validate_btn.configure(text="Retry")
+            self.validate_btn.grid(row=0, column=3, padx=SPACING["md"], pady=SPACING["sm"])
             self.toast.error(result.message)
         
         self._update_step_states()
@@ -1161,6 +1183,14 @@ class SubAutoApp(ctk.CTk):
         self.destroy()
         sys.exit(0)
 
+
+    
+    def _reset_scroll(self):
+        """Reset scroll position to top."""
+        try:
+            self.content._parent_canvas.yview_moveto(0.0)
+        except Exception:
+            pass
 
 def run_app():
     """Run the Sub-auto application."""

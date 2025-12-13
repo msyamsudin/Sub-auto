@@ -36,6 +36,7 @@ class StepCard(ctk.CTkFrame):
         self._state = state
         self.on_click = on_click
         self.content_frame: Optional[ctk.CTkFrame] = None
+        self._is_collapsed = False  # Track collapsed state
         
         self._setup_ui()
         self._apply_state()
@@ -53,7 +54,7 @@ class StepCard(ctk.CTkFrame):
         
         # Header row
         self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.header_frame.grid(row=0, column=0, sticky="ew", padx=SPACING["md"], pady=SPACING["md"])
+        self.header_frame.grid(row=0, column=0, sticky="ew", padx=SPACING["sm"], pady=SPACING["sm"])
         self.header_frame.grid_columnconfigure(1, weight=1)
         
         # Step number badge
@@ -105,8 +106,18 @@ class StepCard(ctk.CTkFrame):
         self.title_label.bind("<Button-1>", lambda e: self._on_header_click())
     
     def _on_header_click(self):
-        """Handle header click."""
-        if self._state != "inactive" and self.on_click:
+        """Handle header click - toggle collapse/expand."""
+        if self._state == "inactive":
+            return
+        
+        # Toggle collapsed state for completed steps
+        if self._state == "completed" and self._is_collapsed:
+            self.expand()
+        elif self._state == "completed":
+            self.collapse()
+        
+        # Call original on_click handler if provided
+        if self.on_click:
             self.on_click()
     
     def _apply_state(self):
@@ -135,8 +146,13 @@ class StepCard(ctk.CTkFrame):
             self.badge_frame.configure(fg_color=COLORS["step_completed"])
             self.badge_label.configure(text="✓")
             self.title_label.configure(text_color=COLORS["text_primary"])
-            self.status_label.configure(text="")
-            self.content_frame.grid()
+            # Show expand indicator if collapsed
+            if self._is_collapsed:
+                self.status_label.configure(text="▶", text_color=COLORS["text_muted"])
+                self.content_frame.grid_remove()
+            else:
+                self.status_label.configure(text="")
+                self.content_frame.grid()
             self._set_children_state("normal")
             
         elif self._state == "error":
@@ -191,6 +207,27 @@ class StepCard(ctk.CTkFrame):
         if hasattr(self, 'subtitle_label'):
             self.subtitle_label.destroy()
             delattr(self, 'subtitle_label')
+    
+    def collapse(self):
+        """Collapse the content area."""
+        if not self._is_collapsed:
+            self._is_collapsed = True
+            self.content_frame.grid_remove()
+            if self._state == "completed":
+                self.status_label.configure(text="▶", text_color=COLORS["text_muted"])
+    
+    def expand(self):
+        """Expand the content area."""
+        if self._is_collapsed:
+            self._is_collapsed = False
+            if self._state != "inactive":
+                self.content_frame.grid()
+            if self._state == "completed":
+                self.status_label.configure(text="")
+    
+    def is_collapsed(self) -> bool:
+        """Check if content is collapsed."""
+        return self._is_collapsed
 
 
 class CompactHeader(ctk.CTkFrame):

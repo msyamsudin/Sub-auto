@@ -64,9 +64,9 @@ FONTS = {
 SPACING = {
     "xs": 2,
     "sm": 4,
-    "md": 6,   # Reduced from 8
-    "lg": 8,   # Reduced from 12
-    "xl": 12,  # Reduced from 16
+    "md": 4,   # Extra Compact
+    "lg": 6,   # Extra Compact
+    "xl": 8,   # Extra Compact
 }
 
 # Border radius - Rounded corners (User request)
