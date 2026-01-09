@@ -77,7 +77,7 @@ Alat otomatisasi untuk mengekstrak, menerjemahkan, dan menggabungkan subtitle pa
 - **Import Error**: Pastikan semua dependencies terinstall dengan menjalankan `pip install -r requirements.txt`
 - **Virtual environment tidak aktif**: Gunakan `start.bat` (Windows) atau aktifkan manual dengan `.venv\Scripts\activate`
 
-## Struktur Proyek
+## Struktur
 
 ```
 Sub-auto/
