@@ -1,8 +1,8 @@
-# Sub-auto 🎬
+# Sub-auto
 
 Alat otomatisasi untuk mengekstrak, menerjemahkan, dan menggabungkan subtitle pada file video MKV menggunakan LLM.
 
-## ✨ Fitur
+## Fitur
 
 - **Multi-Provider LLM**: Ollama (lokal), OpenRouter (cloud), Gemini
 - **Otomatis end-to-end**: Ekstrak → Terjemahkan → Gabung kembali ke MKV
@@ -10,12 +10,12 @@ Alat otomatisasi untuk mengekstrak, menerjemahkan, dan menggabungkan subtitle pa
 - **Estimasi token**: Prakiraan penggunaan token sebelum mulai
 - **GUI intuitif**: Antarmuka grafis yang mudah digunakan
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Python 3.10+
 - MKVToolNix ([download](https://mkvtoolnix.download/))
 
-## 🚀 Instalasi & Penggunaan
+## Instalasi & Penggunaan
 
 ### Windows (Recommended - Menggunakan Batch Files)
 
@@ -57,7 +57,7 @@ Alat otomatisasi untuk mengekstrak, menerjemahkan, dan menggabungkan subtitle pa
    python main.py
    ```
 
-## 📖 Cara Menggunakan
+## Cara Menggunakan
 
 1. **Pilih file MKV** - Klik tombol untuk memilih file video
 2. **Pilih track subtitle** - Pilih subtitle yang ingin diterjemahkan
@@ -68,16 +68,16 @@ Alat otomatisasi untuk mengekstrak, menerjemahkan, dan menggabungkan subtitle pa
 4. **Mulai terjemahan** - Klik "Start Translation"
 5. **Tunggu proses selesai** - Subtitle akan otomatis digabungkan ke file MKV
 
-**Settings (⚙️)**: Atur API key atau path MKVToolNix jika diperlukan.
+**Settings**: Atur API key atau path MKVToolNix jika diperlukan.
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 - **Ollama 403**: Pastikan `ollama serve` berjalan di background
 - **MKVToolNix not found**: Atur path manual di Settings atau install dari [mkvtoolnix.download](https://mkvtoolnix.download/)
 - **Import Error**: Pastikan semua dependencies terinstall dengan menjalankan `pip install -r requirements.txt`
 - **Virtual environment tidak aktif**: Gunakan `start.bat` (Windows) atau aktifkan manual dengan `.venv\Scripts\activate`
 
-## 📁 Struktur Proyek
+## Struktur Proyek
 
 ```
 Sub-auto/
@@ -90,6 +90,6 @@ Sub-auto/
 └── start.bat          # Script untuk menjalankan aplikasi (Windows)
 ```
 
-## 📄 Lisensi
+## Lisensi
 
 [MIT License](LICENSE)
