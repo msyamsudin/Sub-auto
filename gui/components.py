@@ -1904,38 +1904,13 @@ class SubtitleEditor(ctk.CTkToplevel):
     def _setup_ui(self):
         """Setup the editor UI."""
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=0)
-        self.grid_rowconfigure(1, weight=0)
-        self.grid_rowconfigure(2, weight=0)
-        self.grid_rowconfigure(3, weight=1) # Editor area gets the weight
-        
-        # Header
-        header_frame = ctk.CTkFrame(self, fg_color=COLORS["info_bg"], corner_radius=0, height=80)
-        header_frame.grid(row=0, column=0, sticky="ew")
-        header_frame.grid_propagate(False)
-        
-        header_content = ctk.CTkFrame(header_frame, fg_color="transparent")
-        header_content.place(relx=0.5, rely=0.5, anchor="center")
-        
-        icon = ctk.CTkLabel(
-            header_content,
-            text="📝",
-            font=(FONTS["family"], 32),
-            text_color=COLORS["info"]
-        )
-        icon.pack(side="left", padx=(0, SPACING["sm"]))
-        
-        title = ctk.CTkLabel(
-            header_content,
-            text="Review Subtitle Translation",
-            font=(FONTS["family"], FONTS["heading_size"], "bold"),
-            text_color=COLORS["info"]
-        )
-        title.pack(side="left")
+        self.grid_rowconfigure(0, weight=0) # Toolbar
+        self.grid_rowconfigure(1, weight=0) # Info
+        self.grid_rowconfigure(2, weight=1) # Editor area gets the weight
         
         # Toolbar
         toolbar_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=0)
-        toolbar_frame.grid(row=1, column=0, sticky="ew", pady=0)
+        toolbar_frame.grid(row=0, column=0, sticky="ew", pady=0)
         
         toolbar_content = ctk.CTkFrame(toolbar_frame, fg_color="transparent")
         toolbar_content.pack(fill="x", padx=SPACING["lg"], pady=SPACING["sm"])
@@ -2014,7 +1989,7 @@ class SubtitleEditor(ctk.CTkToplevel):
         
         # Info bar
         info_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], corner_radius=0)
-        info_frame.grid(row=2, column=0, sticky="ew", pady=(0, SPACING["sm"]))
+        info_frame.grid(row=1, column=0, sticky="ew", pady=(0, SPACING["sm"]))
         
         info_label = ctk.CTkLabel(
             info_frame,
@@ -2026,7 +2001,7 @@ class SubtitleEditor(ctk.CTkToplevel):
         
         # Editor area
         editor_container = ctk.CTkFrame(self, fg_color="transparent")
-        editor_container.grid(row=3, column=0, sticky="nsew", padx=SPACING["lg"], pady=(0, SPACING["sm"]))
+        editor_container.grid(row=2, column=0, sticky="nsew", padx=SPACING["lg"], pady=(0, SPACING["sm"]))
         editor_container.grid_columnconfigure(0, weight=1)
         editor_container.grid_rowconfigure(0, weight=1)
         
@@ -2072,7 +2047,7 @@ class SubtitleEditor(ctk.CTkToplevel):
         
         # Footer with buttons
         footer_frame = ctk.CTkFrame(self, fg_color="transparent")
-        footer_frame.grid(row=4, column=0, sticky="ew", pady=SPACING["lg"])
+        footer_frame.grid(row=3, column=0, sticky="ew", pady=SPACING["lg"])
         
         # Center buttons
         btn_container = ctk.CTkFrame(footer_frame, fg_color="transparent")
