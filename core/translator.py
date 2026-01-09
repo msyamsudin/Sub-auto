@@ -396,53 +396,25 @@ class Translator:
     """Translator using configured LLM provider."""
     
     # Translation prompt template
-    TRANSLATION_PROMPT = """You are a professional anime subtitle translator.
+    TRANSLATION_PROMPT = """You are a professional subtitle translator. Translate the following subtitle lines from {source_lang} to {target_lang}.
 
-Translate the following subtitle lines from {source_lang} to {target_lang} for Indonesian anime viewers.
+CRITICAL RULES:
+1. Use natural, spoken Indonesian suitable for subtitles
+2. Prioritize meaning, tone, and emotion over literal translation
+3. Do not force-translate commonly used loanwords
+4. Keep names, proper nouns, and Japanese honorifics unchanged
+5. Preserve formatting markers like \\N exactly
+6. If a line is already in the target language or is a non-dialogue cue, keep it as-is
+7. Keep translations concise and subtitle-friendly
 
-CORE PRINCIPLES:
-1. Produce NATURAL, SPOKEN Indonesian (how people actually talk)
-2. Prioritize meaning, emotion, and flow — not literal translation
-3. Match the speaker's tone and social register
-
-TONE MATCHING GUIDE:
-- Casual: aku, kamu, gak, emang
-- Polite/Formal: saya, Anda, tidak, memang
-- Rough/Harsh: gua, lo, kagak, bentakan kasar bila konteks mendukung
-
-TERMINOLOGY & CULTURE:
-4. Keep character names, places, titles, attacks, and proper nouns unchanged
-5. Preserve Japanese honorifics and cultural terms when commonly used (e.g., -san, -kun, senpai)
-6. Keep commonly used loanwords as-is (e.g., online, smartphone)
-7. For puns or wordplay that cannot be translated literally, adapt the meaning or emotional effect
-8. For Japan-specific cultural references, keep them intact and adapt wording subtly for Indonesian understanding
-
-SUBTITLE TECHNICAL RULES:
-9. Preserve formatting markers exactly (e.g., \\N, ..., brackets)
-10. Preserve ellipsis (...) and dramatic pauses for timing and emotion
-11. Keep each subtitle line concise and readable; aim for under ~42 characters per line when possible
-12. If a line is already in {target_lang}, keep it unchanged
-13. If a line is a non-verbal sound cue (e.g., [laughs], [sigh], [door opens]), keep it as-is
-
-CONSISTENCY:
-14. Maintain consistent pronouns and speech style for each character based on context
-15. Use previous lines to resolve ambiguity
-
-EXAMPLES:
-❌ Bad: "Saya akan pergi ke sekolah sekarang"
-✅ Good: "Aku berangkat dulu ya"
-
-CONTEXT (previous lines for reference):
+CONTEXT:
 {context}
 
-NOW TRANSLATE THESE LINES (format: [NUMBER] original text):
+TRANSLATE:
 {lines}
 
 OUTPUT:
-- Respond with ONLY the translations
-- Use this exact format (one per line):
-[NUMBER] translated text
-- Do NOT add explanations or notes"""
+[NUMBER] translated text"""
 
     def __init__(
         self, 
