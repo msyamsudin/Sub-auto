@@ -65,16 +65,31 @@ class NetworkRetryHandler:
         self.consecutive_failures = 0
         self.last_error = None
     
-    def calculate_delay(self, attempt: int) -> float:
+    def calculate_delay(self, attempt: int, error: Optional[Exception] = None) -> float:
         """
         Calculate delay for the next retry with exponential backoff.
+        Parses API-suggested retry delays from error messages when available.
         
         Args:
             attempt: Current attempt number (0-based)
+            error: Optional exception that may contain retry-after information
             
         Returns:
             Delay in seconds
         """
+        # Check if error contains specific retry time (e.g., Groq's "Please try again in X.XXs")
+        if error:
+            error_str = str(error)
+            # Match patterns like "try again in 1.57s" or "retry after 2.5s"
+            match = re.search(r'(?:try again in|retry after)\s+([\d.]+)\s*s', error_str, re.IGNORECASE)
+            if match:
+                suggested_delay = float(match.group(1))
+                # Add small buffer (10%) to be safe
+                suggested_delay = suggested_delay * 1.1
+                self.logger.info(f"Using API-suggested retry delay: {suggested_delay:.2f}s")
+                return max(suggested_delay, 0.1)
+        
+        # Fallback to exponential backoff
         delay = self.config.initial_delay * (self.config.exponential_base ** attempt)
         delay = min(delay, self.config.max_delay)
         
@@ -169,8 +184,8 @@ class NetworkRetryHandler:
                     self.logger.error(f"Non-retriable error or max retries reached: {e}")
                     raise e
                 
-                # Calculate delay
-                delay = self.calculate_delay(attempt)
+                # Calculate delay (pass error for smart retry-after parsing)
+                delay = self.calculate_delay(attempt, e)
                 error_msg = str(e)
                 
                 self.logger.warning(f"Error: {error_msg}. Retrying in {delay:.2f}s...")
@@ -760,8 +775,9 @@ OUTPUT:
                     if line.index not in completed_indices:
                         all_translations.append((line.index, line.text))
             
-            # Small delay between batches to be nice to API
-            time_module.sleep(0.5)
+            # Delay between batches to avoid rate limits
+            # Increased from 0.5s to 1.5s for better rate limit handling
+            time_module.sleep(1.5)
         
         all_translations.sort(key=lambda x: x[0])
         
