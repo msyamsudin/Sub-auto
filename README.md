@@ -4,11 +4,18 @@ Alat otomatisasi untuk mengekstrak, menerjemahkan, dan menggabungkan subtitle pa
 
 ## Fitur
 
-- **Multi-Provider LLM**: Ollama (lokal), OpenRouter (cloud), Gemini
-- **Otomatis end-to-end**: Ekstrak → Terjemahkan → Gabung kembali ke MKV
-- **Batch processing**: Terjemahan dalam batch dengan kemampuan resume
-- **Estimasi token**: Prakiraan penggunaan token sebelum mulai
-- **GUI intuitif**: Antarmuka grafis yang mudah digunakan
+- **Multi-Provider LLM**:
+  - **Ollama**: Jalankan model secara lokal.
+  - **Groq**: Pemrosesan cepat.
+  - **OpenRouter & Gemini**: Akses ke model performa tinggi.
+- **Smart Fallback**: Sistem otomatis beralih ke model cadangan jika terjadi error API atau policy violation.
+- **Built-in Editor**: Tinjau, edit, dan validasi hasil terjemahan sebelum digabungkan ke video.
+- **Otomatisasi Penuh**:
+  - Ekstrak subtitle dari MKV.
+  - Terjemahkan baris demi baris.
+  - Gabung kembali (mux) ke file video asli tanpa re-encoding.
+- **Batch Processing**: Antrian dengan kemampuan Auto-Resume.
+- **Token Manager**: Estimasi biaya dan penggunaan token.
 
 ## Prerequisites
 
