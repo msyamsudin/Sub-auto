@@ -465,8 +465,8 @@ class SubAutoApp(ctk.CTk):
     
     def _update_token_estimate(self):
         """Calculate and display estimated tokens for OpenRouter translations."""
-        # Only show for OpenRouter with file, track, and API ready
-        if (self.config.provider != "openrouter" or 
+        # Only show for OpenRouter/Groq with file, track, and API ready
+        if (self.config.provider not in ["openrouter", "groq"] or 
             not self.current_file or 
             self.selected_track_id is None or
             not self.api_validated):
@@ -589,7 +589,9 @@ class SubAutoApp(ctk.CTk):
             self._update_step_states()
             
             # Auto-connect if OLLAMA or OpenRouter with key
-            if self.config.provider == "ollama" or (self.config.provider == "openrouter" and self.config.openrouter_api_key):
+            if self.config.provider == "ollama" or \
+               (self.config.provider == "openrouter" and self.config.openrouter_api_key) or \
+               (self.config.provider == "groq" and self.config.groq_api_key):
                 self._validate_api()
             else:
                 self.toast.info("AI settings updated. Please reconnect.")
@@ -722,8 +724,12 @@ class SubAutoApp(ctk.CTk):
                 configured_model = None
                 if self.config.provider == "ollama":
                     configured_model = self.config.ollama_model
+                if self.config.provider == "ollama":
+                    configured_model = self.config.ollama_model
                 elif self.config.provider == "openrouter":
                     configured_model = self.config.openrouter_model
+                elif self.config.provider == "groq":
+                    configured_model = self.config.groq_model
                 
                 if configured_model and configured_model in models:
                      self.selected_model = configured_model
@@ -774,6 +780,8 @@ class SubAutoApp(ctk.CTk):
         if self.config.provider == "openrouter" and self.config.openrouter_api_key:
             self.after(1000, self._validate_api)
         elif self.config.provider == "ollama":
+            self.after(1000, self._validate_api)
+        elif self.config.provider == "groq" and self.config.groq_api_key:
             self.after(1000, self._validate_api)
     
     def _enter_processing_mode(self):

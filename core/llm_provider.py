@@ -256,7 +256,8 @@ class GroqProvider(LLMProvider):
         url = f"{self.base_url}{endpoint}"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "User-Agent": "Sub-auto/1.0"
         }
         
         body = json.dumps(data).encode('utf-8') if data else None

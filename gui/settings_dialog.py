@@ -12,7 +12,7 @@ from .components import CustomTitleBar
 
 
 import threading
-from core.llm_provider import OllamaProvider
+from core.llm_provider import OllamaProvider, GroqProvider
 from core.translator import get_api_manager
 
 class SettingsDialog(ctk.CTkFrame):
@@ -95,7 +95,7 @@ class SettingsDialog(ctk.CTkFrame):
         self.provider_var = ctk.StringVar(value=self.config.provider)
         provider_menu = ctk.CTkOptionMenu(
             provider_wrapper,
-            values=["openrouter", "ollama"],
+            values=["openrouter", "ollama", "groq"],
             variable=self.provider_var,
             command=self._on_provider_change,
             **get_option_menu_style()
@@ -237,6 +237,89 @@ class SettingsDialog(ctk.CTkFrame):
             **get_label_style("muted")
         )
         api_hint.grid(row=gem_row, column=0, columnspan=2, sticky="w", pady=(0, SPACING["lg"]))
+
+        # --- Groq Settings Frame ---
+        self.groq_frame = ctk.CTkFrame(content, fg_color="transparent")
+        self.groq_frame.grid(row=row, column=0, columnspan=2, sticky="ew")
+        self.groq_frame.grid_columnconfigure(1, weight=1)
+
+        gq_row = 0
+        label_gq_api = ctk.CTkLabel(self.groq_frame, text="Groq API Key:", **get_label_style("body"))
+        label_gq_api.grid(row=gq_row, column=0, sticky="w", pady=(0, SPACING["sm"]))
+
+        gq_api_container = ctk.CTkFrame(self.groq_frame, fg_color="transparent")
+        gq_api_container.grid(row=gq_row, column=1, sticky="ew", padx=(SPACING["md"], 0))
+        gq_api_container.grid_columnconfigure(0, weight=1)
+
+        self.groq_api_key_entry = ctk.CTkEntry(
+            gq_api_container,
+            placeholder_text="gsk_...",
+            show="•",
+            **get_input_style()
+        )
+        self.groq_api_key_entry.grid(row=0, column=0, sticky="ew", padx=(0, SPACING["sm"]))
+        if self.config.groq_api_key:
+            self.groq_api_key_entry.insert(0, self.config.groq_api_key)
+
+        # Show/hide button Groq
+        self.show_gq_key = False
+        self.toggle_gq_key_btn = ctk.CTkButton(
+            gq_api_container,
+            text="👁",
+            width=35,
+            command=self._toggle_gq_key_visibility,
+            **get_button_style("ghost")
+        )
+        self.toggle_gq_key_btn.grid(row=0, column=1)
+
+        self.validate_gq_btn = ctk.CTkButton(
+            gq_api_container,
+            text="⟳",
+            width=35,
+            command=self._validate_groq,
+            **get_button_style("secondary")
+        )
+        self.validate_gq_btn.grid(row=0, column=2, padx=(SPACING["sm"], 0))
+
+        gq_row += 1
+        self.groq_status_label = ctk.CTkLabel(
+            self.groq_frame,
+            text="",
+            font=(FONTS["family"], FONTS["small_size"], "bold"),
+            text_color=COLORS["text_muted"]
+        )
+        self.groq_status_label.grid(row=gq_row, column=1, sticky="w", padx=(SPACING["md"], 0), pady=(0, SPACING["sm"]))
+
+        gq_row += 1
+        label_gq_model = ctk.CTkLabel(self.groq_frame, text="Model:", **get_label_style("body"))
+        label_gq_model.grid(row=gq_row, column=0, sticky="w", pady=(SPACING["sm"], SPACING["sm"]))
+        
+        # Wrap dropdown in bordered frame
+        groq_model_wrapper = ctk.CTkFrame(
+            self.groq_frame,
+            fg_color=COLORS["bg_dark"],
+            border_width=1,
+            border_color=COLORS["border"],
+            corner_radius=RADIUS["md"]
+        )
+        groq_model_wrapper.grid(row=gq_row, column=1, sticky="ew", padx=(SPACING["md"], 0), pady=(SPACING["sm"], SPACING["sm"]))
+
+        self.groq_model_var = ctk.StringVar(value=self.config.groq_model or "llama3-70b-8192")
+        self.groq_model_menu = ctk.CTkOptionMenu(
+            groq_model_wrapper,
+            variable=self.groq_model_var,
+            values=[self.config.groq_model] if self.config.groq_model else ["llama3-70b-8192"],
+            **get_option_menu_style()
+        )
+        self.groq_model_menu.pack(fill="x", padx=1, pady=1)
+
+        gq_row += 1
+        gq_hint = ctk.CTkLabel(
+            self.groq_frame,
+            text="Get a key from: https://console.groq.com/keys",
+            **get_label_style("muted")
+        )
+        gq_hint.grid(row=gq_row, column=0, columnspan=2, sticky="w", pady=(0, SPACING["lg"]))
         
         # --- OLLAMA Settings Frame ---
         self.ollama_frame = ctk.CTkFrame(content, fg_color="transparent")
@@ -406,6 +489,8 @@ class SettingsDialog(ctk.CTkFrame):
              self.after(500, self._validate_openrouter)
         elif self.config.provider == "ollama":
              self.after(500, lambda: self._refresh_ollama_models(silent=True))
+        elif self.config.provider == "groq" and self.config.groq_api_key:
+             self.after(500, self._validate_groq)
     
     def _browse_mkv_path(self):
         """Browse for MKVToolnix folder."""
@@ -423,15 +508,31 @@ class SettingsDialog(ctk.CTkFrame):
         else:
             self.api_key_entry.configure(show="•")
             self.toggle_key_btn.configure(text="👁")
+
+    def _toggle_gq_key_visibility(self):
+        """Toggle Groq API key visibility."""
+        self.show_gq_key = not self.show_gq_key
+        if self.show_gq_key:
+            self.groq_api_key_entry.configure(show="")
+            self.toggle_gq_key_btn.configure(text="🙈")
+        else:
+            self.groq_api_key_entry.configure(show="•")
+            self.toggle_gq_key_btn.configure(text="👁")
             
     def _on_provider_change(self, choice):
         """Handle provider dropdown change."""
         if choice == "openrouter":
             self.openrouter_frame.grid()
             self.ollama_frame.grid_remove()
+            self.groq_frame.grid_remove()
+        elif choice == "groq":
+            self.openrouter_frame.grid_remove()
+            self.ollama_frame.grid_remove()
+            self.groq_frame.grid()
         else:
             self.openrouter_frame.grid_remove()
             self.ollama_frame.grid()
+            self.groq_frame.grid_remove()
     
     def _save_settings(self):
         """Save settings and close."""
@@ -458,6 +559,16 @@ class SettingsDialog(ctk.CTkFrame):
         new_ollama_model = self.ollama_model_var.get()
         ollama_model_changed = new_ollama_model != self.config.ollama_model
         self.config.ollama_model = new_ollama_model
+
+        # Groq
+        new_gq_api_key = self.groq_api_key_entry.get().strip()
+        gq_api_key_changed = new_gq_api_key != (self.config.groq_api_key or "")
+        if new_gq_api_key:
+            self.config.groq_api_key = new_gq_api_key
+        
+        new_gq_model = self.groq_model_var.get()
+        gq_model_changed = new_gq_model != self.config.groq_model
+        self.config.groq_model = new_gq_model
         
         # MKV
         self.config.mkvtoolnix_path = self.mkv_path_entry.get().strip()
@@ -476,7 +587,9 @@ class SettingsDialog(ctk.CTkFrame):
             provider_changed or 
             (new_provider == "openrouter" and api_key_changed) or
             (new_provider == "openrouter" and (api_key_changed or or_model_changed)) or
-            (new_provider == "ollama" and (ollama_url_changed or ollama_model_changed))
+            (new_provider == "openrouter" and (api_key_changed or or_model_changed)) or
+            (new_provider == "ollama" and (ollama_url_changed or ollama_model_changed)) or
+            (new_provider == "groq" and (gq_api_key_changed or gq_model_changed))
         )
         
         if self.on_save:
@@ -737,6 +850,50 @@ class SettingsDialog(ctk.CTkFrame):
             if not silent:
                 self._show_toast(f"Connection failed: {result}", "error")
             self.ollama_status_label.configure(text="● Offline", text_color=COLORS["error"])
+
+    def _validate_groq(self):
+        """Validate Groq API Key and fetch models."""
+        api_key = self.groq_api_key_entry.get().strip()
+        if not api_key:
+            self._show_toast("Please enter Groq API Key", "error")
+            return
+            
+        self.validate_gq_btn.configure(state="disabled")
+        self.groq_status_label.configure(text="Connecting...", text_color=COLORS["text_secondary"])
+        
+        thread = threading.Thread(target=self._do_validate_groq, args=(api_key,), daemon=True)
+        thread.start()
+
+    def _do_validate_groq(self, api_key):
+        """Background validation for Groq."""
+        try:
+            provider = GroqProvider(api_key=api_key)
+            models = provider.list_models()
+            model_names = [m.name for m in models]
+            self.after(0, lambda: self._on_groq_validate_result(True, model_names))
+        except Exception as e:
+            self.after(0, lambda: self._on_groq_validate_result(False, str(e)))
+
+    def _on_groq_validate_result(self, success, result):
+        """Handle Groq validation result."""
+        if not self.winfo_exists():
+            return
+            
+        self.validate_gq_btn.configure(state="normal")
+        
+        if success:
+            models = result
+            if models:
+                self.groq_model_menu.configure(values=models)
+                # If current model not in list, select first
+                if self.groq_model_var.get() not in models:
+                    self.groq_model_var.set(models[0])
+                
+                self._show_toast("Groq Connected", "success")
+            self.groq_status_label.configure(text="● Online", text_color=COLORS["success"])
+        else:
+            self.groq_status_label.configure(text="● Error", text_color=COLORS["error"])
+            self._show_toast(f"Error: {result}", "error")
             
     def _show_toast(self, message, type="info"):
         """Show toast message using parent's toast manager if available."""
