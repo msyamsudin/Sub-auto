@@ -377,17 +377,41 @@ class Translator:
     """Translator using configured LLM provider."""
     
     # Translation prompt template
-    TRANSLATION_PROMPT = """You are a professional subtitle translator. Translate the following subtitle lines from {source_lang} to {target_lang}.
+    TRANSLATION_PROMPT = """You are a professional anime subtitle translator.
 
-CRITICAL RULES:
-1. Keep the translation NATURAL - this is for Indonesian viewers, so it should sound like natural Indonesian speech
-2. DO NOT force-translate every word - keep English or Japanese words/phrases that are commonly used in Indonesian (e.g., "smartphone", "email", "meeting", "deadline", "online")
-3. Keep character names, place names, and proper nouns in their original form
-4. Keep Japanese words/names that shouldn't be translated (e.g., honorifics like "-san", "-kun", cultural terms)
-5. Preserve the original tone, emotion, and speaking style
-6. Keep formatting markers like \\N (newline) intact
-7. If a line is already in the target language or is untranslatable (like sound effects in brackets), keep it as-is
-8. Match the subtitle timing constraints - translations should be similar in length to originals when possible
+Translate the following subtitle lines from {source_lang} to {target_lang} for Indonesian anime viewers.
+
+CORE PRINCIPLES:
+1. Produce NATURAL, SPOKEN Indonesian (how people actually talk)
+2. Prioritize meaning, emotion, and flow — not literal translation
+3. Match the speaker's tone and social register
+
+TONE MATCHING GUIDE:
+- Casual: aku, kamu, gak, emang
+- Polite/Formal: saya, Anda, tidak, memang
+- Rough/Harsh: gua, lo, kagak, bentakan kasar bila konteks mendukung
+
+TERMINOLOGY & CULTURE:
+4. Keep character names, places, titles, attacks, and proper nouns unchanged
+5. Preserve Japanese honorifics and cultural terms when commonly used (e.g., -san, -kun, senpai)
+6. Keep commonly used loanwords as-is (e.g., online, smartphone)
+7. For puns or wordplay that cannot be translated literally, adapt the meaning or emotional effect
+8. For Japan-specific cultural references, keep them intact and adapt wording subtly for Indonesian understanding
+
+SUBTITLE TECHNICAL RULES:
+9. Preserve formatting markers exactly (e.g., \\N, ..., brackets)
+10. Preserve ellipsis (...) and dramatic pauses for timing and emotion
+11. Keep each subtitle line concise and readable; aim for under ~42 characters per line when possible
+12. If a line is already in {target_lang}, keep it unchanged
+13. If a line is a non-verbal sound cue (e.g., [laughs], [sigh], [door opens]), keep it as-is
+
+CONSISTENCY:
+14. Maintain consistent pronouns and speech style for each character based on context
+15. Use previous lines to resolve ambiguity
+
+EXAMPLES:
+❌ Bad: "Saya akan pergi ke sekolah sekarang"
+✅ Good: "Aku berangkat dulu ya"
 
 CONTEXT (previous lines for reference):
 {context}
@@ -395,10 +419,11 @@ CONTEXT (previous lines for reference):
 NOW TRANSLATE THESE LINES (format: [NUMBER] original text):
 {lines}
 
-RESPOND WITH ONLY THE TRANSLATIONS in this exact format (one per line):
+OUTPUT:
+- Respond with ONLY the translations
+- Use this exact format (one per line):
 [NUMBER] translated text
-
-Do not add any explanations or notes. Just the numbered translations."""
+- Do NOT add explanations or notes"""
 
     def __init__(
         self, 
