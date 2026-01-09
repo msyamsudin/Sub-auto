@@ -1817,8 +1817,163 @@ class ModelSelectorDialog(ctk.CTkToplevel):
         except Exception:
             pass  # Ignore if canvas not available
         
-    def _on_select(self, model: str):
-        """Handle model selection."""
         if self.on_select_callback:
             self.on_select_callback(model)
         self.destroy()
+
+
+class SubtitleEditor(ctk.CTkFrame):
+    """
+    Subtitle editor dialog for reviewing and editing translated subtitles.
+    Displays the SRT content in an editable text area with save/discard options.
+    """
+    
+    def __init__(
+        self,
+        master,
+        subtitle_path: str,
+        on_approve: Optional[Callable[[str], None]] = None,
+        on_discard: Optional[Callable[[], None]] = None,
+        **kwargs
+    ):
+        super().__init__(master, fg_color=COLORS["bg_dark"], **kwargs)
+        
+        self.subtitle_path = subtitle_path
+        self.on_approve_callback = on_approve
+        self.on_discard_callback = on_discard
+        self.original_content = ""
+        
+        self._setup_ui()
+        self._load_subtitle()
+    
+    def _setup_ui(self):
+        """Setup the editor UI."""
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        
+        # Header
+        header_frame = ctk.CTkFrame(self, fg_color=COLORS["info_bg"], corner_radius=0, height=80)
+        header_frame.grid(row=0, column=0, sticky="ew")
+        header_frame.grid_propagate(False)
+        
+        header_content = ctk.CTkFrame(header_frame, fg_color="transparent")
+        header_content.place(relx=0.5, rely=0.5, anchor="center")
+        
+        icon = ctk.CTkLabel(
+            header_content,
+            text="📝",
+            font=(FONTS["family"], 32),
+            text_color=COLORS["info"]
+        )
+        icon.pack(side="left", padx=(0, SPACING["sm"]))
+        
+        title = ctk.CTkLabel(
+            header_content,
+            text="Review Subtitle Translation",
+            font=(FONTS["family"], FONTS["heading_size"], "bold"),
+            text_color=COLORS["info"]
+        )
+        title.pack(side="left")
+        
+        # Info bar
+        info_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], corner_radius=0)
+        info_frame.grid(row=1, column=0, sticky="ew", pady=(0, SPACING["sm"]))
+        
+        info_label = ctk.CTkLabel(
+            info_frame,
+            text="💡 Review and edit the translated subtitles below. Click 'Approve & Merge' when ready.",
+            **get_label_style("body"),
+            anchor="w"
+        )
+        info_label.pack(fill="x", padx=SPACING["md"], pady=SPACING["sm"])
+        
+        # Editor area
+        editor_container = ctk.CTkFrame(self, fg_color="transparent")
+        editor_container.grid(row=2, column=0, sticky="nsew", padx=SPACING["lg"], pady=(0, SPACING["sm"]))
+        editor_container.grid_columnconfigure(0, weight=1)
+        editor_container.grid_rowconfigure(0, weight=1)
+        
+        # Text editor
+        self.text_editor = ctk.CTkTextbox(
+            editor_container,
+            font=(FONTS["mono_family"], FONTS["body_size"]),
+            fg_color=COLORS["bg_dark"],
+            text_color=COLORS["text_primary"],
+            border_color=COLORS["border"],
+            border_width=1,
+            wrap="word"
+        )
+        self.text_editor.grid(row=0, column=0, sticky="nsew")
+        
+        # Stats label
+        self.stats_label = ctk.CTkLabel(
+            editor_container,
+            text="",
+            **get_label_style("muted"),
+            anchor="e"
+        )
+        self.stats_label.grid(row=1, column=0, sticky="e", pady=(SPACING["xs"], 0))
+        
+        # Footer with buttons
+        footer_frame = ctk.CTkFrame(self, fg_color="transparent")
+        footer_frame.grid(row=3, column=0, sticky="ew", pady=SPACING["lg"])
+        
+        # Center buttons
+        btn_container = ctk.CTkFrame(footer_frame, fg_color="transparent")
+        btn_container.pack()
+        
+        discard_btn = ctk.CTkButton(
+            btn_container,
+            text="Discard",
+            width=120,
+            height=40,
+            command=self._on_discard,
+            **get_button_style("secondary")
+        )
+        discard_btn.pack(side="left", padx=SPACING["sm"])
+        
+        approve_btn = ctk.CTkButton(
+            btn_container,
+            text="✓ Approve & Merge",
+            width=180,
+            height=40,
+            command=self._on_approve,
+            **get_button_style("success")
+        )
+        approve_btn.pack(side="left", padx=SPACING["sm"])
+    
+    def _load_subtitle(self):
+        """Load subtitle content from file."""
+        try:
+            with open(self.subtitle_path, 'r', encoding='utf-8') as f:
+                self.original_content = f.read()
+            
+            self.text_editor.delete("0.0", "end")
+            self.text_editor.insert("0.0", self.original_content)
+            
+            # Update stats
+            lines = self.original_content.strip().split('\n')
+            # Count subtitle entries (rough estimate: every block separated by blank line)
+            subtitle_count = self.original_content.count('\n\n') + 1
+            char_count = len(self.original_content)
+            
+            self.stats_label.configure(
+                text=f"📊 {subtitle_count} entries • {char_count:,} characters"
+            )
+            
+        except Exception as e:
+            self.text_editor.insert("0.0", f"Error loading subtitle: {str(e)}")
+            self.stats_label.configure(text="⚠ Error loading file")
+    
+    def _on_approve(self):
+        """Handle approve button click."""
+        content = self.text_editor.get("0.0", "end-1c")  # Get all text except trailing newline
+        
+        if self.on_approve_callback:
+            self.on_approve_callback(content)
+    
+    def _on_discard(self):
+        """Handle discard button click."""
+        if self.on_discard_callback:
+            self.on_discard_callback()
+

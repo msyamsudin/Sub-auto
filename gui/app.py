@@ -20,7 +20,7 @@ from .styles import (
 )
 from .components import (
     FileDropZone, TrackListItem, ProgressPanel, SettingsRow, StatusBadge, APIKeyPanel, SummaryWindow,
-    LogPanel, CollapsibleFrame, CustomTitleBar
+    LogPanel, CollapsibleFrame, CustomTitleBar, SubtitleEditor
 )
 from .step_card import StepCard
 from .settings_dialog import SettingsDialog
@@ -940,56 +940,24 @@ class SubAutoApp(ctk.CTk):
             translated_sub_path = Path(output_dir) / f"{input_path.stem}_{sanitized_model}_translated.srt"
             parser.save(str(translated_sub_path))
             
-            # Merge into MKV
-            output_mkv_path = Path(output_dir) / f"{input_path.stem}_{sanitized_model}_translated.mkv"
-            self.mkv_handler.replace_subtitle(
-                mkv_path=self.current_file,
-                subtitle_path=str(translated_sub_path),
-                output_path=str(output_mkv_path),
-                language="ind",
-                track_name=f"Indonesian ({model_used})",
-                remove_existing_subs=self.remove_old_subs
-            )
-            
-            # Clean up temporary files
-            try:
-                # Remove extracted subtitle file
-                if extracted_path and Path(extracted_path).exists():
-                    Path(extracted_path).unlink()
-                    self.logger.info(f"Cleaned up: {extracted_path}")
-                
-                # Remove translated subtitle file
-                if translated_sub_path.exists():
-                    translated_sub_path.unlink()
-                    self.logger.info(f"Cleaned up: {translated_sub_path}")
-            except Exception as cleanup_error:
-                self.logger.warning(f"Failed to clean up temp files: {cleanup_error}")
-            
-            # Done
-            duration = time.time() - start_time
-            self.state_manager.clear()
-            
-            # Calculate cost estimation if using OpenRouter
-            estimated_cost = None
-            if self.config.provider == "openrouter":
-                model_info = api_manager.get_selected_model_info()
-                if model_info:
-                    estimated_cost = model_info.calculate_cost(
-                        final_tokens.prompt_tokens,
-                        final_tokens.completion_tokens
-                    )
-            
-            summary = {
-                "output_path": str(output_mkv_path),
-                "lines_translated": lines_count,
+            # PAUSE HERE - Show review editor instead of immediately merging
+            # Prepare payload for merge step
+            merge_payload = {
+                "current_file": self.current_file,
+                "translated_sub_path": str(translated_sub_path),
+                "output_dir": output_dir,
+                "input_path": input_path,
+                "sanitized_model": sanitized_model,
                 "model_used": model_used,
-                "duration_seconds": duration,
-                "removed_old_subs": self.remove_old_subs,
-                "tokens": final_tokens,
-                "estimated_cost": estimated_cost
+                "extracted_path": extracted_path,
+                "lines_count": lines_count,
+                "start_time": start_time,
+                "final_tokens": final_tokens,
+                "api_manager": api_manager
             }
             
-            self.after(0, lambda: self._on_translation_complete(summary))
+            # Show review editor on main thread
+            self.after(0, lambda: self._show_review_editor(merge_payload))
             
         except Exception as e:
             if self.is_paused or self.should_cancel:
@@ -1107,6 +1075,145 @@ class SubAutoApp(ctk.CTk):
         
         # Exit processing mode after delay
         self.after(3000, self._exit_processing_mode)
+    
+    def _show_review_editor(self, payload: dict):
+        """Show the subtitle review editor."""
+        self.is_processing = False
+        self._exit_processing_mode()
+        
+        # Store payload for later use
+        self.merge_payload = payload
+        
+        # Create and show editor
+        if hasattr(self, 'editor_view') and self.editor_view:
+            self.editor_view.destroy()
+        
+        self.editor_view = SubtitleEditor(
+            self,
+            subtitle_path=payload["translated_sub_path"],
+            on_approve=self._on_review_approved,
+            on_discard=self._on_review_discarded
+        )
+        self.editor_view.grid(row=1, column=0, rowspan=2, sticky="nsew")
+        self.editor_view.lift()
+        
+        self.toast.info("Translation complete! Please review the subtitles.")
+    
+    def _on_review_approved(self, content: str):
+        """Handle review approval - save edited content and merge."""
+        try:
+            # Save edited content back to file
+            with open(self.merge_payload["translated_sub_path"], 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # Close editor
+            if hasattr(self, 'editor_view') and self.editor_view:
+                self.editor_view.destroy()
+                self.editor_view = None
+            
+            # Proceed with merge
+            self.toast.info("Merging subtitle into video...")
+            self._finalize_merge(self.merge_payload)
+            
+        except Exception as e:
+            self.toast.error(f"Failed to save changes: {str(e)}")
+            self.logger.error(f"Review approval error: {e}")
+    
+    def _on_review_discarded(self):
+        """Handle review discard - clean up and reset."""
+        try:
+            # Clean up translated subtitle file
+            translated_sub_path = Path(self.merge_payload["translated_sub_path"])
+            if translated_sub_path.exists():
+                translated_sub_path.unlink()
+            
+            # Clean up extracted subtitle file
+            extracted_path = self.merge_payload.get("extracted_path")
+            if extracted_path and Path(extracted_path).exists():
+                Path(extracted_path).unlink()
+            
+            # Close editor
+            if hasattr(self, 'editor_view') and self.editor_view:
+                self.editor_view.destroy()
+                self.editor_view = None
+            
+            # Clear state
+            self.state_manager.clear()
+            self.merge_payload = None
+            
+            self.toast.info("Translation discarded")
+            
+        except Exception as e:
+            self.logger.warning(f"Cleanup error during discard: {e}")
+    
+    def _finalize_merge(self, payload: dict):
+        """Finalize the merge process after review approval."""
+        try:
+            # Merge into MKV
+            input_path = payload["input_path"]
+            output_dir = payload["output_dir"]
+            sanitized_model = payload["sanitized_model"]
+            model_used = payload["model_used"]
+            
+            output_mkv_path = Path(output_dir) / f"{input_path.stem}_{sanitized_model}_translated.mkv"
+            
+            self.mkv_handler.replace_subtitle(
+                mkv_path=payload["current_file"],
+                subtitle_path=payload["translated_sub_path"],
+                output_path=str(output_mkv_path),
+                language="ind",
+                track_name=f"Indonesian ({model_used})",
+                remove_existing_subs=self.remove_old_subs
+            )
+            
+            # Clean up temporary files
+            try:
+                # Remove extracted subtitle file
+                extracted_path = payload.get("extracted_path")
+                if extracted_path and Path(extracted_path).exists():
+                    Path(extracted_path).unlink()
+                    self.logger.info(f"Cleaned up: {extracted_path}")
+                
+                # Remove translated subtitle file
+                translated_sub_path = Path(payload["translated_sub_path"])
+                if translated_sub_path.exists():
+                    translated_sub_path.unlink()
+                    self.logger.info(f"Cleaned up: {translated_sub_path}")
+            except Exception as cleanup_error:
+                self.logger.warning(f"Failed to clean up temp files: {cleanup_error}")
+            
+            # Done
+            duration = time.time() - payload["start_time"]
+            self.state_manager.clear()
+            
+            # Calculate cost estimation if using OpenRouter
+            estimated_cost = None
+            if self.config.provider == "openrouter":
+                api_manager = payload["api_manager"]
+                model_info = api_manager.get_selected_model_info()
+                if model_info:
+                    final_tokens = payload["final_tokens"]
+                    estimated_cost = model_info.calculate_cost(
+                        final_tokens.prompt_tokens,
+                        final_tokens.completion_tokens
+                    )
+            
+            summary = {
+                "output_path": str(output_mkv_path),
+                "lines_translated": payload["lines_count"],
+                "model_used": model_used,
+                "duration_seconds": duration,
+                "removed_old_subs": self.remove_old_subs,
+                "tokens": payload["final_tokens"],
+                "estimated_cost": estimated_cost
+            }
+            
+            self._on_translation_complete(summary)
+            
+        except Exception as e:
+            self.toast.error(f"Merge failed: {str(e)}")
+            self.logger.error(f"Merge error: {e}")
+    
     
     def _check_resumable_state(self):
         """Check for resumable state."""
