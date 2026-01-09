@@ -136,7 +136,8 @@ class NetworkRetryHandler:
     def execute_with_retry(
         self, 
         func: Callable[[], T], 
-        on_retry: Optional[Callable[[int, float, str], None]] = None
+        on_retry: Optional[Callable[[int, float, str], None]] = None,
+        stop_check: Optional[Callable[[], bool]] = None
     ) -> T:
         """
         Execute a function with retry logic.
@@ -156,6 +157,9 @@ class NetworkRetryHandler:
         
         for attempt in range(self.config.max_retries + 1):
             try:
+                if stop_check and stop_check():
+                     raise KeyboardInterrupt("Stopped by user")
+                
                 if attempt > 0:
                     self.logger.info(f"Retry attempt {attempt}/{self.config.max_retries}...")
                 return func()
@@ -175,7 +179,14 @@ class NetworkRetryHandler:
                 if on_retry:
                     on_retry(attempt + 1, delay, str(e))
                 
-                time.sleep(delay)
+                # Sleep with interrupt check
+                sleep_step = 0.1
+                slept = 0.0
+                while slept < delay:
+                    if stop_check and stop_check():
+                        raise KeyboardInterrupt("Stopped by user")
+                    time.sleep(min(sleep_step, delay - slept))
+                    slept += sleep_step
         
         # All retries exhausted
         if last_error:
@@ -559,6 +570,9 @@ OUTPUT:
             if not response_text:
                 raise ValueError("Empty response from API")
             
+            if self.should_stop:
+                raise KeyboardInterrupt("Stopped by user")
+            
             return response_text
         
         def on_retry_internal(attempt: int, delay: float, error_msg: str):
@@ -573,7 +587,8 @@ OUTPUT:
             api_start = time.time()
             response_text = self.retry_handler.execute_with_retry(
                 do_translation,
-                on_retry=on_retry_internal
+                on_retry=on_retry_internal,
+                stop_check=lambda: self.should_stop
             )
             api_elapsed = time.time() - api_start
             

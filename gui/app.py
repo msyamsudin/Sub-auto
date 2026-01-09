@@ -84,6 +84,7 @@ class SubAutoApp(ctk.CTk):
         self.logger = get_logger()
         self.remove_old_subs = True
         self._pending_resume = False
+        self.active_translator: Optional[Translator] = None
         
         # Initialize MKV handler
         self._init_mkv_handler()
@@ -868,6 +869,7 @@ class SubAutoApp(ctk.CTk):
             # Initialize translator
             api_manager = get_api_manager()
             translator = Translator(model_manager=api_manager)
+            self.active_translator = translator  # Store reference
             success, msg = translator.initialize()
             
             if not success:
@@ -993,16 +995,22 @@ class SubAutoApp(ctk.CTk):
             if self.is_paused or self.should_cancel:
                 return
             self.after(0, lambda e=e: self._on_translation_error(str(e)))
+        finally:
+            self.active_translator = None
     
     def _pause_translation(self):
         """Pause translation."""
         if self.is_paused:
             # Resume
+            if self.active_translator:
+                self.active_translator.is_paused = False
             self._do_resume()
         else:
             # Pause
             self.is_paused = True
             self.should_cancel = True
+            if self.active_translator:
+                self.active_translator.is_paused = True
             self.processing_view.set_paused(True)
             self.status_label.configure(text="Paused - progress saved")
     
@@ -1036,6 +1044,9 @@ class SubAutoApp(ctk.CTk):
         """Cancel translation."""
         self.should_cancel = True
         self.is_processing = False
+        if self.active_translator:
+            self.active_translator.should_stop = True
+            self.active_translator = None
         self._exit_processing_mode()
         self.toast.info("Translation cancelled")
     
