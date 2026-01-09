@@ -17,7 +17,8 @@ from .config_manager import get_config
 from .subtitle_parser import SubtitleLine
 from .logger import get_logger
 from .logger import get_logger
-from .llm_provider import LLMProvider, OpenRouterProvider, OllamaProvider, GroqProvider, ModelInfo
+from .logger import get_logger
+from .llm_provider import LLMProvider, OpenRouterProvider, OllamaProvider, GroqProvider, ModelInfo, PolicyViolationError
 
 # Generic type for return values
 T = TypeVar('T')
@@ -610,9 +611,90 @@ OUTPUT:
                     success=True,
                     translated_lines=translated,
                     error_message=f"Partial: expected {len(lines)}, got {len(translated)}",
-                    tokens_used=batch_tokens
                 )
                     
+        except PolicyViolationError as e:
+            # Handle Policy Violation (Fallback)
+            self.logger.warning(f"⚠️ Policy Violation detected with model {self.current_model_name}: {e}")
+            
+            # Determine fallback model
+            fallback_model = self.model_manager.config.fallback_model
+            
+            if not fallback_model:
+                # Auto-select fallback (non-Bedrock)
+                self.logger.info("Configuration 'fallback_model' not set. Attempting auto-selection...")
+                for model in self.model_manager.available_models:
+                    name_lower = model.name.lower()
+                    # Filter out Bedrock and current model
+                    if "bedrock" not in name_lower and model.name != self.current_model_name:
+                        # Prefer known stable providers if possible
+                        if "openai" in name_lower or "google" in name_lower or "meta" in name_lower:
+                            fallback_model = model.name
+                            break
+                
+                # If still no fallback, just take the first non-current, non-bedrock one
+                if not fallback_model:
+                    for model in self.model_manager.available_models:
+                        if "bedrock" not in model.name.lower() and model.name != self.current_model_name:
+                            fallback_model = model.name
+                            break
+            
+            if fallback_model:
+                self.logger.warning(f"🛡️ FALLBACK ACTIVATED: Routing segment to {fallback_model} due to policy violation.")
+                try:
+                     # Calculate prompt tokens again as we are retrying
+                    fallback_start = time.time()
+                    self.logger.info(f"🌐 Calling API (Fallback): {fallback_model}")
+                    
+                    # We bypass retry handler for fallback to avoid infinite loops if fallback also fails, 
+                    # OR we could wrap it. For now, simple direct call to ensure we don't spam.
+                    # But using retry handler for network issues on fallback is good.
+                    # Let's simple call first.
+                    
+                    response_text = self.model_manager.provider.generate_content(
+                        fallback_model,
+                        prompt
+                    )
+                    
+                    fallback_elapsed = time.time() - fallback_start
+                    
+                    # Track tokens (approx info)
+                    estimated_completion_tokens = len(response_text) // 4
+                    batch_tokens.add(
+                        prompt=estimated_prompt_tokens,
+                        completion=estimated_completion_tokens
+                    )
+                    self.token_usage.add(
+                        prompt=estimated_prompt_tokens,
+                        completion=estimated_completion_tokens
+                    )
+                    
+                    self.logger.info(f"✅ Fallback response received: {len(response_text)} chars in {fallback_elapsed:.2f}s")
+                    
+                    # Parse response
+                    translated = self._parse_response(response_text, lines)
+                     
+                    batch_elapsed = time.time() - batch_start_time
+                    return TranslationResult(
+                        success=True,
+                        translated_lines=translated,
+                        error_message="Success (Fallback used)",
+                        tokens_used=batch_tokens
+                    )
+
+                except Exception as fallback_error:
+                    self.logger.error(f"❌ Fallback failed: {fallback_error}")
+                    # Fall through to return failure
+            else:
+                 self.logger.error("❌ No suitable fallback model found.")
+
+            return TranslationResult(
+                success=False,
+                translated_lines=[],
+                error_message=f"Policy Violation: {e} (Fallback failed or unavailable)",
+                tokens_used=batch_tokens
+            )
+
         except Exception as e:
             error_msg = str(e)
             retry_status = self.retry_handler.get_status()

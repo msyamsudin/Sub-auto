@@ -37,6 +37,10 @@ class ModelInfo:
         completion_cost = (completion_tokens / 1_000_000) * self.completion_price
         return prompt_cost + completion_cost
 
+class PolicyViolationError(Exception):
+    """Raised when the content violates the provider's policy."""
+    pass
+
 class LLMProvider(ABC):
     """Abstract base class for LLM providers."""
     
@@ -85,8 +89,19 @@ class OpenRouterProvider(LLMProvider):
                 return json.loads(response.read().decode())
         except urllib.error.HTTPError as e:
             error_body = e.read().decode()
+            
+            # Check for Policy Violation (403)
+            if e.code == 403:
+                error_lower = error_body.lower()
+                policy_keywords = ["moderation", "policy", "self-harm", "requires moderation", "blocked"]
+                if any(kw in error_lower for kw in policy_keywords):
+                    raise PolicyViolationError(f"OpenRouter Policy Violation: {error_body}")
+            
             raise RuntimeError(f"OpenRouter API error ({e.code}): {error_body}")
         except Exception as e:
+            # Re-raise PolicyViolationError if caught as general Exception
+            if isinstance(e, PolicyViolationError):
+                raise e
             raise RuntimeError(f"Request failed: {str(e)}")
 
     def validate_connection(self) -> tuple[bool, str]:

@@ -24,7 +24,10 @@ class ConfigManager:
         "default_source_lang": "English",
         "default_target_lang": "Indonesian",
         "output_mode": "new_file",  # "new_file", "replace_backup", "ask"
-        "batch_size": 25
+        "default_target_lang": "Indonesian",
+        "output_mode": "new_file",  # "new_file", "replace_backup", "ask"
+        "batch_size": 25,
+        "fallback_model": ""  # Model to use for fallback (e.g. "openai/gpt-3.5-turbo")
     }
     
     def __init__(self, config_path: Optional[str] = None):
@@ -174,6 +177,15 @@ class ConfigManager:
     @batch_size.setter
     def batch_size(self, value: int) -> None:
         pass # Batch size is now fixed
+
+    @property
+    def fallback_model(self) -> str:
+        """Get fallback model name."""
+        return self.config.get("fallback_model", "")
+
+    @fallback_model.setter
+    def fallback_model(self, value: str) -> None:
+        self.config["fallback_model"] = value
     
     def validate_mkvtoolnix(self) -> tuple[bool, str]:
         """
