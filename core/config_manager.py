@@ -15,9 +15,11 @@ class ConfigManager:
     DEFAULT_CONFIG = {
         "mkvtoolnix_path": "C:\\Program Files\\MKVToolNix",
         "openrouter_api_key": "",
-        "provider": "openrouter",  # "openrouter", "ollama"
+        "provider": "openrouter",  # "openrouter", "ollama", "groq"
         "ollama_base_url": "http://localhost:11434",
         "ollama_model": "llama3",
+        "groq_api_key": "",
+        "groq_model": "llama3-70b-8192",
         "default_output_dir": "",
         "default_source_lang": "English",
         "default_target_lang": "Indonesian",
@@ -116,7 +118,7 @@ class ConfigManager:
     
     @provider.setter
     def provider(self, value: str) -> None:
-        if value in ["openrouter", "ollama"]:
+        if value in ["openrouter", "ollama", "groq"]:
             self.config["provider"] = value
             
     @property
@@ -136,6 +138,24 @@ class ConfigManager:
     @ollama_model.setter
     def ollama_model(self, value: str) -> None:
         self.config["ollama_model"] = value
+
+    @property
+    def groq_api_key(self) -> str:
+        """Get Groq API key."""
+        return self.config.get("groq_api_key", "")
+
+    @groq_api_key.setter
+    def groq_api_key(self, value: str) -> None:
+        self.config["groq_api_key"] = value
+
+    @property
+    def groq_model(self) -> str:
+        """Get Groq model."""
+        return self.config.get("groq_model", "llama3-70b-8192")
+
+    @groq_model.setter
+    def groq_model(self, value: str) -> None:
+        self.config["groq_model"] = value
     
     @property
     def default_output_dir(self) -> str:

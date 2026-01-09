@@ -242,3 +242,100 @@ class OllamaProvider(LLMProvider):
                 return result.get("response", "")
         except Exception as e:
             raise RuntimeError(f"OLLAMA generation failed: {str(e)}")
+
+class GroqProvider(LLMProvider):
+    """Provider for Groq API."""
+    
+    def __init__(self, api_key: str):
+        super().__init__()
+        self.api_key = api_key
+        self.base_url = "https://api.groq.com/openai/v1"
+
+    def _request(self, method: str, endpoint: str, data: Optional[Dict] = None) -> Dict:
+        """Make HTTP request to Groq."""
+        url = f"{self.base_url}{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        body = json.dumps(data).encode('utf-8') if data else None
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        
+        try:
+            # Set explicit timeout
+            with urllib.request.urlopen(req, timeout=30) as response:
+                return json.loads(response.read().decode())
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode()
+            raise RuntimeError(f"Groq API error ({e.code}): {error_body}")
+        except Exception as e:
+            raise RuntimeError(f"Request failed: {str(e)}")
+
+    def validate_connection(self) -> tuple[bool, str]:
+        if not self.api_key:
+            return False, "API key is not set"
+        
+        try:
+            # Try to list models
+            self._request("GET", "/models")
+            return True, "Connected to Groq"
+        except Exception as e:
+            return False, f"Connection failed: {str(e)}"
+
+    def list_models(self) -> List[ModelInfo]:
+        models = []
+        try:
+            data = self._request("GET", "/models")
+            for m in data.get("data", []):
+                # Groq returns models in OpenAI format
+                models.append(ModelInfo(
+                    name=m.get("id"),
+                    display_name=m.get("id"),
+                    provider="Groq",
+                    description=f"Groq Model {m.get('id')}",
+                    input_token_limit=m.get("context_window", 8192), # Default if not specified
+                    output_token_limit=4096 # Typical default
+                ))
+        except Exception as e:
+            self.logger.error(f"Failed to list Groq models: {e}")
+            # Fallback to hardcoded known models if list fails
+            known_models = [
+                "llama3-8b-8192",
+                "llama3-70b-8192",
+                "mixtral-8x7b-32768",
+                "gemma-7b-it"
+            ]
+            for km in known_models:
+                models.append(ModelInfo(
+                    name=km,
+                    display_name=km,
+                    provider="Groq",
+                    description="Groq Model (Fallback)"
+                ))
+        
+        return sorted(models, key=lambda x: x.name)
+
+    def generate_content(self, model_name: str, prompt: str) -> str:
+        import time
+        data = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3 
+        }
+        
+        try:
+            start_time = time.time()
+            result = self._request("POST", "/chat/completions", data)
+            elapsed = time.time() - start_time
+            self.logger.info(f"Groq API response time: {elapsed:.2f}s (model: {model_name})")
+            
+            if "choices" in result and len(result["choices"]) > 0:
+                return result["choices"][0]["message"]["content"]
+            
+            result_error = result.get('error', {})
+            if result_error:
+                 raise RuntimeError(f"API Error: {result_error.get('message', 'Unknown error')}")
+            return ""
+        except Exception as e:
+            raise RuntimeError(f"Groq generation failed: {str(e)}")

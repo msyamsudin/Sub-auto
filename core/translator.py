@@ -17,7 +17,7 @@ from .config_manager import get_config
 from .subtitle_parser import SubtitleLine
 from .logger import get_logger
 from .logger import get_logger
-from .llm_provider import LLMProvider, OpenRouterProvider, OllamaProvider, ModelInfo
+from .llm_provider import LLMProvider, OpenRouterProvider, OllamaProvider, GroqProvider, ModelInfo
 
 # Generic type for return values
 T = TypeVar('T')
@@ -256,6 +256,8 @@ class ModelManager:
             self.provider = OllamaProvider(
                 base_url=self.config.ollama_base_url
             )
+        elif self.provider_name == "groq":
+            self.provider = GroqProvider(self.config.groq_api_key)
         else:
             raise ValueError(f"Unknown provider: {self.provider_name}")
 
@@ -327,6 +329,12 @@ class ModelManager:
                 "llama3",
                 "mistral",
                 "gemma"
+            ]
+        elif self.provider_name == "groq":
+            preferred_models = [
+                self.config.groq_model,
+                "llama3-70b-8192",
+                "llama3-8b-8192"
             ]
         else:
             preferred_models = []
@@ -439,6 +447,8 @@ OUTPUT:
             if self.model_manager.config.provider == "openrouter" and self.model_manager.config.openrouter_api_key:
                 self.model_manager.validate_connection()
             elif self.model_manager.config.provider == "ollama":
+                self.model_manager.validate_connection()
+            elif self.model_manager.config.provider == "groq" and self.model_manager.config.groq_api_key:
                 self.model_manager.validate_connection()
         
         self.token_usage = TokenUsage()
