@@ -1084,9 +1084,12 @@ class SubAutoApp(ctk.CTk):
         # Store payload for later use
         self.merge_payload = payload
         
-        # Create and show editor
+        # Create and show editor as a toplevel window
         if hasattr(self, 'editor_view') and self.editor_view:
-            self.editor_view.destroy()
+            try:
+                self.editor_view.destroy()
+            except:
+                pass
         
         self.editor_view = SubtitleEditor(
             self,
@@ -1094,8 +1097,7 @@ class SubAutoApp(ctk.CTk):
             on_approve=self._on_review_approved,
             on_discard=self._on_review_discarded
         )
-        self.editor_view.grid(row=1, column=0, rowspan=2, sticky="nsew")
-        self.editor_view.lift()
+        # No need to grid() - it's a toplevel window now
         
         self.toast.info("Translation complete! Please review the subtitles.")
     
@@ -1106,10 +1108,7 @@ class SubAutoApp(ctk.CTk):
             with open(self.merge_payload["translated_sub_path"], 'w', encoding='utf-8') as f:
                 f.write(content)
             
-            # Close editor
-            if hasattr(self, 'editor_view') and self.editor_view:
-                self.editor_view.destroy()
-                self.editor_view = None
+            # Editor window closes itself
             
             # Proceed with merge
             self.toast.info("Merging subtitle into video...")
@@ -1132,10 +1131,7 @@ class SubAutoApp(ctk.CTk):
             if extracted_path and Path(extracted_path).exists():
                 Path(extracted_path).unlink()
             
-            # Close editor
-            if hasattr(self, 'editor_view') and self.editor_view:
-                self.editor_view.destroy()
-                self.editor_view = None
+            # Editor window closes itself
             
             # Clear state
             self.state_manager.clear()

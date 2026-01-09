@@ -47,6 +47,14 @@ COLORS = {
     "step_active": "#3B82F6",        # Blue 500 - current step
     "step_completed": "#22C55E",     # Green 500 - done
     "step_active_bg": "#1E293B",     # Slate 800 - active background
+    
+    # Syntax highlighting for SRT editor
+    "syntax_number": "#60A5FA",      # Blue 400 - entry numbers
+    "syntax_timestamp": "#34D399",   # Emerald 400 - timestamps
+    "syntax_arrow": "#A1A1AA",       # Zinc 400 - arrows (-->)
+    "syntax_text": "#FAFAFA",        # White - subtitle text
+    "syntax_error": "#F87171",       # Red 400 - errors
+    "syntax_comment": "#71717A",     # Zinc 500 - comments
 }
 
 # Font settings

@@ -1822,10 +1822,11 @@ class ModelSelectorDialog(ctk.CTkToplevel):
         self.destroy()
 
 
-class SubtitleEditor(ctk.CTkFrame):
+class SubtitleEditor(ctk.CTkToplevel):
     """
     Subtitle editor dialog for reviewing and editing translated subtitles.
     Displays the SRT content in an editable text area with save/discard options.
+    Opens as a resizable window.
     """
     
     def __init__(
@@ -1836,20 +1837,77 @@ class SubtitleEditor(ctk.CTkFrame):
         on_discard: Optional[Callable[[], None]] = None,
         **kwargs
     ):
-        super().__init__(master, fg_color=COLORS["bg_dark"], **kwargs)
+        super().__init__(master, **kwargs)
         
         self.subtitle_path = subtitle_path
         self.on_approve_callback = on_approve
         self.on_discard_callback = on_discard
         self.original_content = ""
         
+        # Window configuration
+        self.title("Review Subtitle Translation")
+        self.configure(fg_color=COLORS["bg_dark"])
+        
+        # Set window size and position
+        width = 1000
+        height = 700
+        
+        # Center on parent window
+        root = master.winfo_toplevel()
+        root.update_idletasks()
+        
+        parent_x = root.winfo_x()
+        parent_y = root.winfo_y()
+        parent_width = root.winfo_width()
+        parent_height = root.winfo_height()
+        
+        x = parent_x + (parent_width - width) // 2
+        y = parent_y + (parent_height - height) // 2
+        
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Set minimum size
+        self.minsize(800, 600)
+        
+        # Make it modal
+        self.transient(root)
+        self.grab_set()
+        
+        # Handle window close
+        self.protocol("WM_DELETE_WINDOW", self._on_window_close)
+        
+        # Editor state
+        self.undo_stack = []
+        self.redo_stack = []
+        self.last_content = ""
+        self.search_index = "1.0"
+        self.search_matches = []
+        
         self._setup_ui()
         self._load_subtitle()
+        
+        # Setup keyboard shortcuts
+        self._setup_keyboard_shortcuts()
+        
+        # Focus the window
+        self.focus_force()
+    
+    def _setup_keyboard_shortcuts(self):
+        """Setup keyboard shortcuts."""
+        self.bind("<Control-s>", lambda e: self._on_approve())
+        self.bind("<Control-f>", lambda e: self._show_find_dialog())
+        self.bind("<Control-h>", lambda e: self._show_replace_dialog())
+        self.bind("<Control-g>", lambda e: self._show_goto_dialog())
+        self.bind("<Escape>", lambda e: self._on_window_close())
+        # Note: Undo/Redo handled by CTkTextbox natively
     
     def _setup_ui(self):
         """Setup the editor UI."""
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=0)
+        self.grid_rowconfigure(1, weight=0)
+        self.grid_rowconfigure(2, weight=0)
+        self.grid_rowconfigure(3, weight=1) # Editor area gets the weight
         
         # Header
         header_frame = ctk.CTkFrame(self, fg_color=COLORS["info_bg"], corner_radius=0, height=80)
@@ -1875,9 +1933,88 @@ class SubtitleEditor(ctk.CTkFrame):
         )
         title.pack(side="left")
         
+        # Toolbar
+        toolbar_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=0)
+        toolbar_frame.grid(row=1, column=0, sticky="ew", pady=0)
+        
+        toolbar_content = ctk.CTkFrame(toolbar_frame, fg_color="transparent")
+        toolbar_content.pack(fill="x", padx=SPACING["lg"], pady=SPACING["sm"])
+        
+        # Search button
+        search_btn = ctk.CTkButton(
+            toolbar_content,
+            text="🔍 Find",
+            width=80,
+            height=28,
+            command=self._show_find_dialog,
+            **get_button_style("ghost")
+        )
+        search_btn.pack(side="left", padx=(0, SPACING["xs"]))
+        
+        # Replace button
+        replace_btn = ctk.CTkButton(
+            toolbar_content,
+            text="Aa Replace",
+            width=80,
+            height=28,
+            command=self._show_replace_dialog,
+            **get_button_style("ghost")
+        )
+        replace_btn.pack(side="left", padx=(0, SPACING["xs"]))
+        
+        # Go to entry button
+        goto_btn = ctk.CTkButton(
+            toolbar_content,
+            text="↗️ Go to",
+            width=80,
+            height=28,
+            command=self._show_goto_dialog,
+            **get_button_style("ghost")
+        )
+        goto_btn.pack(side="left", padx=SPACING["xs"])
+        
+        # Separator
+        sep1 = ctk.CTkLabel(toolbar_content, text="|", text_color=COLORS["border"])
+        sep1.pack(side="left", padx=SPACING["sm"])
+        
+        # Validate button
+        validate_btn = ctk.CTkButton(
+            toolbar_content,
+            text="✓ Validate",
+            width=90,
+            height=28,
+            command=self._validate_content,
+            **get_button_style("ghost")
+        )
+        validate_btn.pack(side="left", padx=SPACING["xs"])
+        
+        # Separator
+        sep2 = ctk.CTkLabel(toolbar_content, text="|", text_color=COLORS["border"])
+        sep2.pack(side="left", padx=SPACING["sm"])
+        
+        # Syntax highlighting toggle
+        self.syntax_enabled = True
+        self.syntax_btn = ctk.CTkButton(
+            toolbar_content,
+            text="🎨 Syntax: ON",
+            width=110,
+            height=28,
+            command=self._toggle_syntax,
+            **get_button_style("ghost")
+        )
+        self.syntax_btn.pack(side="left", padx=SPACING["xs"])
+        
+        # Info on right side
+        shortcuts_label = ctk.CTkLabel(
+            toolbar_content,
+            text="💡 Ctrl+S: Save | Ctrl+F: Find | Ctrl+G: Go to | Esc: Close",
+            **get_label_style("muted")
+        )
+        shortcuts_label.pack(side="right", padx=SPACING["sm"])
+        
         # Info bar
         info_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], corner_radius=0)
-        info_frame.grid(row=1, column=0, sticky="ew", pady=(0, SPACING["sm"]))
+        info_frame.grid(row=2, column=0, sticky="ew", pady=(0, SPACING["sm"]))
         
         info_label = ctk.CTkLabel(
             info_frame,
@@ -1889,23 +2026,42 @@ class SubtitleEditor(ctk.CTkFrame):
         
         # Editor area
         editor_container = ctk.CTkFrame(self, fg_color="transparent")
-        editor_container.grid(row=2, column=0, sticky="nsew", padx=SPACING["lg"], pady=(0, SPACING["sm"]))
+        editor_container.grid(row=3, column=0, sticky="nsew", padx=SPACING["lg"], pady=(0, SPACING["sm"]))
         editor_container.grid_columnconfigure(0, weight=1)
         editor_container.grid_rowconfigure(0, weight=1)
         
-        # Text editor
+        # Text editor with improved styling
         self.text_editor = ctk.CTkTextbox(
             editor_container,
-            font=(FONTS["mono_family"], FONTS["body_size"]),
+            font=(FONTS["mono_family"], FONTS["body_size"] + 1),  # Slightly larger
             fg_color=COLORS["bg_dark"],
             text_color=COLORS["text_primary"],
-            border_color=COLORS["border"],
-            border_width=1,
-            wrap="word"
+            border_color=COLORS["border_light"],
+            border_width=2,
+            wrap="word",
+            activate_scrollbars=True,
+            undo=True,
+            maxundo=-1
         )
         self.text_editor.grid(row=0, column=0, sticky="nsew")
         
-        # Stats label
+        # Bind Undo/Redo keys explicitly
+        self.text_editor.bind("<Control-z>", lambda e: self.text_editor.edit_undo())
+        self.text_editor.bind("<Control-y>", lambda e: self.text_editor.edit_redo())
+        self.text_editor.bind("<Control-Shift-z>", lambda e: self.text_editor.edit_redo())
+        
+        # Configure syntax highlighting tags
+        self.text_editor.tag_config("number", foreground=COLORS["syntax_number"])
+        self.text_editor.tag_config("timestamp", foreground=COLORS["syntax_timestamp"])
+        self.text_editor.tag_config("arrow", foreground=COLORS["syntax_arrow"])
+        self.text_editor.tag_config("text", foreground=COLORS["syntax_text"])
+        self.text_editor.tag_config("error", foreground=COLORS["syntax_error"], background=COLORS["error_bg"])
+        self.text_editor.tag_config("search_highlight", background=COLORS["warning_bg"], foreground=COLORS["warning"])
+        
+        # Bind events
+        self.text_editor.bind("<<Modified>>", self._on_text_modified)
+        
+        # Stats label with more info
         self.stats_label = ctk.CTkLabel(
             editor_container,
             text="",
@@ -1916,7 +2072,7 @@ class SubtitleEditor(ctk.CTkFrame):
         
         # Footer with buttons
         footer_frame = ctk.CTkFrame(self, fg_color="transparent")
-        footer_frame.grid(row=3, column=0, sticky="ew", pady=SPACING["lg"])
+        footer_frame.grid(row=4, column=0, sticky="ew", pady=SPACING["lg"])
         
         # Center buttons
         btn_container = ctk.CTkFrame(footer_frame, fg_color="transparent")
@@ -1958,12 +2114,307 @@ class SubtitleEditor(ctk.CTkFrame):
             char_count = len(self.original_content)
             
             self.stats_label.configure(
-                text=f"📊 {subtitle_count} entries • {char_count:,} characters"
+                text=f"📊 {subtitle_count} entries • {char_count:,} characters • {len(lines):,} lines"
             )
+            
+            # Apply syntax highlighting
+            self.last_content = self.original_content
+            if self.syntax_enabled:
+                self._apply_syntax_highlighting()
             
         except Exception as e:
             self.text_editor.insert("0.0", f"Error loading subtitle: {str(e)}")
             self.stats_label.configure(text="⚠ Error loading file")
+
+    def _on_text_modified(self, event=None):
+        """Handle text modification for syntax highlighting."""
+        if self.syntax_enabled:
+            # Debounce: only apply if content actually changed
+            current = self.text_editor.get("0.0", "end-1c")
+            if current != self.last_content:
+                self.last_content = current
+                self.after(100, self._apply_syntax_highlighting)  # Debounce 100ms
+    
+    def _apply_syntax_highlighting(self):
+        """Apply syntax highlighting to SRT format."""
+        try:
+            # Remove all tags first
+            for tag in ["number", "timestamp", "arrow", "text", "error"]:
+                self.text_editor.tag_remove(tag, "1.0", "end")
+            
+            content = self.text_editor.get("1.0", "end-1c")
+            lines = content.split('\n')
+            
+            import re
+            line_num = 1
+            i = 0
+            
+            while i < len(lines):
+                line = lines[i]
+                
+                # Entry number (should be just digits)
+                if line.strip().isdigit():
+                    start = f"{line_num}.0"
+                    end = f"{line_num}.end"
+                    self.text_editor.tag_add("number", start, end)
+                
+                # Timestamp line (HH:MM:SS,mmm --> HH:MM:SS,mmm)
+                elif '-->' in line:
+                    # Validate timestamp format
+                    timestamp_pattern = r'^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}$'
+                    if re.match(timestamp_pattern, line.strip()):
+                        # Valid timestamp
+                        parts = line.split('-->')
+                        if len(parts) == 2:
+                            # Highlight first timestamp
+                            start_pos = f"{line_num}.0"
+                            arrow_start = f"{line_num}.{len(parts[0])}"
+                            self.text_editor.tag_add("timestamp", start_pos, arrow_start)
+                            
+                            # Highlight arrow
+                            arrow_end = f"{line_num}.{len(parts[0]) + 3}"
+                            self.text_editor.tag_add("arrow", arrow_start, arrow_end)
+                            
+                            # Highlight second timestamp
+                            end_pos = f"{line_num}.end"
+                            self.text_editor.tag_add("timestamp", arrow_end, end_pos)
+                    else:
+                        # Invalid timestamp format
+                        start = f"{line_num}.0"
+                        end = f"{line_num}.end"
+                        self.text_editor.tag_add("error", start, end)
+                
+                # Subtitle text (non-empty, not number, not timestamp)
+                elif line.strip() and not line.strip().isdigit() and '-->' not in line:
+                    start = f"{line_num}.0"
+                    end = f"{line_num}.end"
+                    self.text_editor.tag_add("text", start, end)
+                
+                line_num += 1
+                i += 1
+                
+        except Exception as e:
+            pass  # Silently fail syntax highlighting
+    
+    def _toggle_syntax(self):
+        """Toggle syntax highlighting on/off."""
+        self.syntax_enabled = not self.syntax_enabled
+        
+        if self.syntax_enabled:
+            self.syntax_btn.configure(text="🎨 Syntax: ON")
+            self._apply_syntax_highlighting()
+        else:
+            self.syntax_btn.configure(text="🎨 Syntax: OFF")
+            # Remove all syntax tags
+            for tag in ["number", "timestamp", "arrow", "text", "error"]:
+                self.text_editor.tag_remove(tag, "1.0", "end")
+    
+    def _show_find_dialog(self):
+        """Show find dialog."""
+        dialog = ctk.CTkInputDialog(
+            text="Enter text to find:",
+            title="Find"
+        )
+        search_text = dialog.get_input()
+        
+        if search_text:
+            self._find_text(search_text)
+    
+    def _find_text(self, search_text: str):
+        """Find and highlight text in editor."""
+        # Remove previous highlights
+        self.text_editor.tag_remove("search_highlight", "1.0", "end")
+        
+        # Find all occurrences
+        self.search_matches = []
+        start_pos = "1.0"
+        
+        while True:
+            pos = self.text_editor.search(search_text, start_pos, stopindex="end", nocase=True)
+            if not pos:
+                break
+            
+            end_pos = f"{pos}+{len(search_text)}c"
+            self.text_editor.tag_add("search_highlight", pos, end_pos)
+            self.search_matches.append(pos)
+            start_pos = end_pos
+        
+        # Jump to first match
+        if self.search_matches:
+            self.text_editor.see(self.search_matches[0])
+            self.stats_label.configure(
+                text=f"🔍 Found {len(self.search_matches)} matches"
+            )
+        else:
+            self.stats_label.configure(text="🔍 No matches found")
+    
+    def _show_replace_dialog(self):
+        """Show replace dialog."""
+        # Custom dialog for replace
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Find & Replace")
+        dialog.geometry("400x200")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        # Center dialog
+        self.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - 400) // 2
+        y = self.winfo_y() + (self.winfo_height() - 200) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        # UI
+        frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Find
+        ctk.CTkLabel(frame, text="Find what:").grid(row=0, column=0, sticky="w", pady=(0, 10))
+        find_entry = ctk.CTkEntry(frame, width=250)
+        find_entry.grid(row=0, column=1, pady=(0, 10))
+        find_entry.focus_set()
+        
+        # Replace
+        ctk.CTkLabel(frame, text="Replace with:").grid(row=1, column=0, sticky="w", pady=(0, 20))
+        replace_entry = ctk.CTkEntry(frame, width=250)
+        replace_entry.grid(row=1, column=1, pady=(0, 20))
+        
+        # Buttons
+        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
+        
+        def do_replace():
+            find_txt = find_entry.get()
+            rep_txt = replace_entry.get()
+            if find_txt:
+                count = self._replace_text(find_txt, rep_txt)
+                dialog.destroy()
+                from tkinter import messagebox
+                messagebox.showinfo("Replace", f"Replaced {count} occurrences.")
+                self.stats_label.configure(text=f"Aa Replaced {count} occurrences")
+        
+        ctk.CTkButton(btn_frame, text="Replace All", command=do_replace, width=100).pack(side="right")
+        ctk.CTkButton(btn_frame, text="Cancel", command=dialog.destroy, fg_color=COLORS["bg_light"], hover_color=COLORS["border"], width=80).pack(side="right", padx=10)
+
+    def _replace_text(self, find_text: str, replace_text: str) -> int:
+        """Replace all occurrences of text."""
+        content = self.text_editor.get("1.0", "end-1c")
+        new_content, count = content.replace(find_text, replace_text), content.count(find_text)
+        
+        if count > 0:
+            self.text_editor.delete("1.0", "end")
+            self.text_editor.insert("1.0", new_content)
+            # Re-apply syntax highlighting
+            if self.syntax_enabled:
+                self._apply_syntax_highlighting()
+                
+        return count
+
+    def _show_goto_dialog(self):
+        """Show go to entry dialog."""
+        dialog = ctk.CTkInputDialog(
+            text="Enter entry number to jump to:",
+            title="Go to Entry"
+        )
+        entry_num = dialog.get_input()
+        
+        if entry_num and entry_num.isdigit():
+            self._goto_entry(int(entry_num))
+    
+    def _goto_entry(self, entry_num: int):
+        """Jump to specific subtitle entry."""
+        try:
+            content = self.text_editor.get("1.0", "end-1c")
+            lines = content.split('\n')
+            
+            # Find the line with this entry number
+            for i, line in enumerate(lines):
+                if line.strip() == str(entry_num):
+                    # Jump to this line
+                    line_pos = f"{i + 1}.0"
+                    self.text_editor.see(line_pos)
+                    self.text_editor.mark_set("insert", line_pos)
+                    self.stats_label.configure(text=f"↗️ Jumped to entry {entry_num}")
+                    return
+            
+            self.stats_label.configure(text=f"⚠️ Entry {entry_num} not found")
+        except Exception as e:
+            self.stats_label.configure(text=f"⚠️ Error: {str(e)}")
+    
+    def _validate_content(self):
+        """Validate SRT format and show errors."""
+        try:
+            content = self.text_editor.get("1.0", "end-1c")
+            lines = content.split('\n')
+            
+            errors = []
+            import re
+            
+            i = 0
+            entry_count = 0
+            expected_num = 1
+            
+            while i < len(lines):
+                line = lines[i].strip()
+                
+                # Skip empty lines
+                if not line:
+                    i += 1
+                    continue
+                
+                # Should be entry number
+                if not line.isdigit():
+                    errors.append(f"Line {i+1}: Expected entry number, got '{line[:30]}'")
+                    i += 1
+                    continue
+                
+                entry_num = int(line)
+                if entry_num != expected_num:
+                    errors.append(f"Line {i+1}: Entry number {entry_num} out of sequence (expected {expected_num})")
+                
+                expected_num += 1
+                entry_count += 1
+                i += 1
+                
+                # Next should be timestamp
+                if i >= len(lines):
+                    errors.append(f"Entry {entry_num}: Missing timestamp")
+                    break
+                
+                timestamp_line = lines[i].strip()
+                timestamp_pattern = r'^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}$'
+                
+                if not re.match(timestamp_pattern, timestamp_line):
+                    errors.append(f"Line {i+1}: Invalid timestamp format")
+                
+                i += 1
+                
+                # Next should be subtitle text (at least one line)
+                has_text = False
+                while i < len(lines) and lines[i].strip() and not lines[i].strip().isdigit():
+                    has_text = True
+                    i += 1
+                
+                if not has_text:
+                    errors.append(f"Entry {entry_num}: Missing subtitle text")
+            
+            # Show results
+            if errors:
+                error_msg = f"⚠️ Found {len(errors)} error(s):\n" + "\n".join(errors[:5])
+                if len(errors) > 5:
+                    error_msg += f"\n... and {len(errors) - 5} more"
+                
+                # Show in a dialog
+                from tkinter import messagebox
+                messagebox.showwarning("Validation Errors", error_msg)
+                self.stats_label.configure(text=f"⚠️ {len(errors)} validation error(s)")
+            else:
+                from tkinter import messagebox
+                messagebox.showinfo("Validation", f"✓ Valid SRT format!\n{entry_count} entries checked.")
+                self.stats_label.configure(text=f"✓ Valid SRT format ({entry_count} entries)")
+                
+        except Exception as e:
+            self.stats_label.configure(text=f"⚠️ Validation error: {str(e)}")
     
     def _on_approve(self):
         """Handle approve button click."""
@@ -1971,9 +2422,22 @@ class SubtitleEditor(ctk.CTkFrame):
         
         if self.on_approve_callback:
             self.on_approve_callback(content)
+        
+        # Close window
+        self.grab_release()
+        self.destroy()
     
     def _on_discard(self):
         """Handle discard button click."""
         if self.on_discard_callback:
             self.on_discard_callback()
+        
+        # Close window
+        self.grab_release()
+        self.destroy()
+    
+    def _on_window_close(self):
+        """Handle window close button (X)."""
+        # Treat as discard
+        self._on_discard()
 
