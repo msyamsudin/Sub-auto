@@ -73,34 +73,16 @@ class CustomTitleBar(ctk.CTkFrame):
         
         # Left side - App icon and title
         left_frame = ctk.CTkFrame(self, fg_color="transparent")
-        left_frame.grid(row=0, column=0, sticky="w", padx=SPACING["sm"])
-        
-        # App icon
-        icon = ctk.CTkLabel(
-            left_frame,
-            text="🎬",
-            font=(FONTS["family"], 14)
-        )
-        icon.pack(side="left", padx=(SPACING["sm"], SPACING["xs"]))
+        left_frame.grid(row=0, column=0, sticky="w", padx=SPACING["md"], pady=SPACING["sm"])
         
         # Title
-        title_label = ctk.CTkLabel(
+        self.title_label = ctk.CTkLabel(
             left_frame,
-            text=self.title_text,
-            font=(FONTS["family"], title_font_size, "bold"),
+            text=f"{self.title_text} {self.version}".strip(),
+            font=(FONTS["family"], FONTS["heading_size"], "bold"),
             text_color=COLORS["text_primary"]
         )
-        title_label.pack(side="left")
-        
-        # Version (if provided)
-        if self.version:
-            version_label = ctk.CTkLabel(
-                left_frame,
-                text=f" v{self.version}",
-                font=(FONTS["family"], FONTS["small_size"]),
-                text_color=COLORS["text_muted"]
-            )
-            version_label.pack(side="left")
+        self.title_label.pack(side="left")
         
         # Center spacer (draggable area)
         self.drag_area = ctk.CTkFrame(self, fg_color="transparent")
@@ -623,6 +605,207 @@ class TrackListItem(ctk.CTkFrame):
         self.is_selected.set(False)
 
 
+class SegmentedProgressBar(ctk.CTkFrame):
+    """
+    A segmented progress bar using Canvas for performance.
+    Features:
+    - Zero-lag resizing (Canvas based)
+    - Dynamic segment count
+    - Pulse animation on leading edge
+    """
+    def __init__(
+        self,
+        master,
+        segment_width: int = 10,
+        height: int = 16,
+        spacing: int = 3,
+        active_color: str = COLORS["error"],
+        inactive_color: str = COLORS["bg_dark"],
+        pulse_color: str = "#FF8A80", # Lighter red for pulse
+        corner_radius: int = 2,
+        **kwargs
+    ):
+        super().__init__(master, height=height, fg_color="transparent", **kwargs)
+        
+        self.height = height
+        self.segment_width = segment_width
+        self.spacing = spacing
+        self.active_color = active_color
+        self.inactive_color = inactive_color
+        self.pulse_color = pulse_color
+        self.corner_radius = corner_radius
+        
+        # State
+        self.progress = 0.0
+        self._current_width = 1
+        self._segments_count = 0
+        self._active_count = 0
+        self._pulse_direction = 1 # 1 for fade in, -1 for fade out
+        self._pulse_alpha = 0.0   # 0.0 to 1.0 interpolation factor
+        self._anim_running = False
+        
+        # Canvas Setup
+        # Resolve transparent to actual color (Canvas doesn't support 'transparent')
+        bg_color = self._apply_appearance_mode(self._fg_color)
+        if bg_color == "transparent":
+            bg_color = self._apply_appearance_mode(COLORS["bg_medium"])
+            
+        self.canvas = ctk.CTkCanvas(
+            self,
+            height=height,
+            bg=bg_color,
+            highlightthickness=0,
+            borderwidth=0
+        )
+        self.canvas.pack(fill="both", expand=True)
+        
+        # Bind events
+        self.bind("<Configure>", self._on_resize)
+        self.canvas.bind("<Configure>", self._on_resize)
+
+    def _apply_appearance_mode(self, color):
+        """Handle ctk color tuples/single values."""
+        if isinstance(color, (tuple, list)):
+            return color[1] if ctk.get_appearance_mode() == "Dark" else color[0]
+        return color
+
+    def _on_resize(self, event):
+        """Handle resize."""
+        if event.width <= 1 or event.width == self._current_width:
+            return
+            
+        self._current_width = event.width
+        self._draw()
+
+    def _draw(self, no_color_updates=False, **kwargs):
+        """Draw segments."""
+        if self._current_width <= 0:
+            return
+            
+        # If called by parent init, canvas might not be ready or we want to skip
+        if not hasattr(self, 'canvas'):
+            return
+
+        self.canvas.delete("all")
+        
+        # Calculate count
+        total_unit = self.segment_width + self.spacing
+        self._segments_count = max(1, int((self._current_width + self.spacing) // total_unit))
+        
+        # Draw all inactive first
+        for i in range(self._segments_count):
+            x = i * total_unit
+            self._draw_round_rect(
+                x, 0, x + self.segment_width, self.height, 
+                radius=self.corner_radius, 
+                fill=self.inactive_color,
+                tag=f"seg_{i}"
+            )
+            
+        # Redraw active state
+        self._update_colors()
+
+    def _draw_round_rect(self, x1, y1, x2, y2, radius, **kwargs):
+        """Draw a rounded rectangle using polygon."""
+        points = [
+            x1 + radius, y1,
+            x2 - radius, y1,
+            x2, y1, x2, y1 + radius,
+            x2, y2 - radius,
+            x2, y2, x2 - radius, y2,
+            x1 + radius, y2,
+            x1, y2, x1, y2 - radius,
+            x1, y1 + radius,
+            x1, y1
+        ]
+        return self.canvas.create_polygon(points, smooth=True, **kwargs)
+
+    def set(self, value: float):
+        """Set progress (0.0 - 1.0)."""
+        self.progress = max(0.0, min(1.0, value))
+        self._update_colors()
+        
+        # Start/Stop pulse
+        if self.progress > 0 and self.progress < 1:
+            if not self._anim_running:
+                self._anim_running = True
+                self._animate_pulse()
+        else:
+            self._anim_running = False # Stop on 0 or complete
+
+    def _update_colors(self):
+        """Update segment colors."""
+        target_active = int(self.progress * self._segments_count)
+        
+        # Optimization: only update changed segments? 
+        # For now, simplistic approach is fine for 50 items.
+        
+        for i in range(self._segments_count):
+            tag = f"seg_{i}"
+            color = self.active_color if i < target_active else self.inactive_color
+            self.canvas.itemconfig(tag, fill=color)
+            
+        self._active_count = target_active
+
+    def _animate_pulse(self):
+        """Pulse the last active segment."""
+        if not self._anim_running or self._active_count <= 0:
+            return
+
+        # Target segment: the last one that is active (leading edge)
+        # Index is active_count - 1
+        target_idx = self._active_count - 1
+        tag = f"seg_{target_idx}"
+        
+        # Logic: Interpolate between active_color and pulse_color
+        # We'll just toggle for simplicity first, or better, oscillate
+         
+        # Oscillate alpha
+        self._pulse_alpha += 0.1 * self._pulse_direction
+        if self._pulse_alpha >= 1.0:
+            self._pulse_alpha = 1.0
+            self._pulse_direction = -1
+        elif self._pulse_alpha <= 0.0:
+            self._pulse_alpha = 0.0
+            self._pulse_direction = 1
+            
+        # Interpolate Color
+        current_color = self._interpolate_color(self.active_color, self.pulse_color, self._pulse_alpha)
+        self.canvas.itemconfig(tag, fill=current_color)
+        
+        # Schedule next frame (30ms ~ 33fps)
+        self.after(30, self._animate_pulse)
+
+    def _interpolate_color(self, c1, c2, t):
+        """Interpolate between two hex colors."""
+        # Clean hex
+        c1 = c1.lstrip('#')
+        c2 = c2.lstrip('#')
+        
+        # RGB
+        r1, g1, b1 = tuple(int(c1[i:i+2], 16) for i in (0, 2, 4))
+        r2, g2, b2 = tuple(int(c2[i:i+2], 16) for i in (0, 2, 4))
+        
+        # Lerp
+        r = int(r1 + (r2 - r1) * t)
+        g = int(g1 + (g2 - g1) * t)
+        b = int(b1 + (b2 - b1) * t)
+        
+        return f"#{r:02x}{g:02x}{b:02x}"
+        
+    def configure(self, **kwargs):
+        if "progress_color" in kwargs:
+            self.active_color = kwargs.pop("progress_color")
+            self._update_colors()
+        if "fg_color" in kwargs:
+            self.inactive_color = kwargs.pop("fg_color")
+            # Update canvas background too if transparent logic needed?
+            # For now just update rectangles
+            self._update_colors()
+        super().configure(**kwargs)
+
+
+
 class ProgressPanel(ctk.CTkFrame):
     """Progress panel with progress bar and status text."""
     
@@ -649,13 +832,11 @@ class ProgressPanel(ctk.CTkFrame):
         )
         
         # Progress bar
-        self.progress_bar = ctk.CTkProgressBar(
+        self.progress_bar = SegmentedProgressBar(
             self,
-            mode="determinate",
-            progress_color=COLORS["primary"],
-            fg_color=COLORS["bg_dark"],
-            corner_radius=RADIUS["sm"],
-            height=8
+            active_color=COLORS["error"],
+            segment_width=12,
+            spacing=4
         )
         self.progress_bar.grid(
             row=1, column=0,
@@ -700,18 +881,20 @@ class ProgressPanel(ctk.CTkFrame):
     
     def set_indeterminate(self, status: str = "Processing..."):
         """Set progress bar to indeterminate mode."""
-        self.progress_bar.configure(mode="indeterminate")
-        self.progress_bar.start()
+        # SegmentedProgressBar doesn't support built-in indeterminate
+        # self.progress_bar.configure(mode="indeterminate")
+        # self.progress_bar.start()
         self.status_label.configure(text=status)
     
     def stop_indeterminate(self):
         """Stop indeterminate mode."""
-        self.progress_bar.stop()
-        self.progress_bar.configure(mode="determinate")
+        # self.progress_bar.stop()
+        # self.progress_bar.configure(mode="determinate")
+        pass
     
     def reset(self):
         """Reset progress panel."""
-        self.progress_bar.configure(mode="determinate")
+        # self.progress_bar.configure(mode="determinate")
         self.progress_bar.set(0)
         self.status_label.configure(text="Ready")
         self.detail_label.configure(text="")
@@ -719,9 +902,14 @@ class ProgressPanel(ctk.CTkFrame):
     def set_success(self, message: str = "Complete!"):
         """Show success state."""
         self.progress_bar.set(1)
+    def set_success(self, message: str = "Complete!"):
+        """Show success state."""
+        self.progress_bar.set(1)
         self.progress_bar.configure(progress_color=COLORS["success"])
         self.status_label.configure(text=message, text_color=COLORS["success"])
     
+    def set_error(self, message: str = "Error occurred"):
+        """Show error state."""
     def set_error(self, message: str = "Error occurred"):
         """Show error state."""
         self.progress_bar.configure(progress_color=COLORS["error"])
@@ -1525,7 +1713,7 @@ class LogPanel(ctk.CTkFrame):
         self.is_expanded = False
         
         # Header (Always visible)
-        self.header_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], height=40, corner_radius=RADIUS["md"])
+        self.header_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], height=40, corner_radius=RADIUS["md"])
         self.header_frame.pack(fill="x", pady=(0, 5))
         self.header_frame.grid_propagate(False) # Fixed height
         
@@ -1585,7 +1773,7 @@ class LogPanel(ctk.CTkFrame):
         self.save_btn.pack(side="right", padx=5)
         
         # Content frame (Hidden by default)
-        self.content_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=RADIUS["md"])
+        self.content_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
         
         # Log text area
         # Log text area
@@ -1849,8 +2037,8 @@ class SubtitleEditor(ctk.CTkToplevel):
         self.configure(fg_color=COLORS["bg_dark"])
         
         # Set window size and position
-        width = 1000
-        height = 700
+        width = 1200
+        height = 800
         
         # Center on parent window
         root = master.winfo_toplevel()
@@ -1909,7 +2097,7 @@ class SubtitleEditor(ctk.CTkToplevel):
         self.grid_rowconfigure(2, weight=1) # Editor area gets the weight
         
         # Toolbar
-        toolbar_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=0)
+        toolbar_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], corner_radius=0)
         toolbar_frame.grid(row=0, column=0, sticky="ew", pady=0)
         
         toolbar_content = ctk.CTkFrame(toolbar_frame, fg_color="transparent")

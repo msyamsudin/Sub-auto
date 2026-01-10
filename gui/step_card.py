@@ -44,7 +44,7 @@ class StepCard(ctk.CTkFrame):
     def _setup_ui(self):
         """Setup the step card UI."""
         self.configure(
-            fg_color=COLORS["bg_card"],
+            fg_color=COLORS["bg_medium"],
             corner_radius=RADIUS["lg"],
             border_width=1,
             border_color=COLORS["border"]
@@ -133,16 +133,16 @@ class StepCard(ctk.CTkFrame):
             self._set_children_state("disabled")
             
         elif self._state == "active":
-            self.configure(border_color=COLORS["step_active"])
+            self.configure(border_color=COLORS["border"])
             self.badge_frame.configure(fg_color=COLORS["step_active"])
             self.badge_label.configure(text=str(self.step_number))
             self.title_label.configure(text_color=COLORS["text_primary"])
-            self.status_label.configure(text="●", text_color=COLORS["step_active"])
+            self.status_label.configure(text="●", text_color=COLORS["border"])
             self.content_frame.grid()
             self._set_children_state("normal")
             
         elif self._state == "completed":
-            self.configure(border_color=COLORS["step_completed"])
+            self.configure(border_color=COLORS["border"])
             self.badge_frame.configure(fg_color=COLORS["step_completed"])
             self.badge_label.configure(text="✓")
             self.title_label.configure(text_color=COLORS["text_primary"])

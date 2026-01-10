@@ -6,75 +6,86 @@ Defines colors, fonts, and theme settings.
 import customtkinter as ctk
 
 
-# Color Palette - Minimal Gray Theme (Ultra Clean with High Contrast)
+# Color Palette - Minimal (3-4 Core Colors, No Gradients)
 COLORS = {
-    # Primary colors - White accent on dark
-    "primary": "#FAFAFA",            # Pure White
-    "primary_hover": "#E4E4E7",      # Light Gray hover
-    "primary_light": "#D4D4D8",      # Zinc 300
+    # === CORE COLORS (4 only) ===
     
-    # Background colors - True blacks
-    "bg_dark": "#09090B",            # Zinc 950 (True Black)
-    "bg_medium": "#18181B",          # Zinc 900
-    "bg_light": "#27272A",           # Zinc 800
-    "bg_card": "#18181B",            # Zinc 900
+    # 1. Background (Blacks & Grays)
+    "bg_dark": "#0b0b0b",            # Main background
+    "bg_medium": "#1a1a1a",          # Cards, panels
+    "bg_light": "#2a2a2a",           # Inputs, hover states
     
-    # Text colors
-    "text_primary": "#FAFAFA",       # Zinc 50 (White)
-    "text_secondary": "#A1A1AA",     # Zinc 400 (Gray)
-    "text_muted": "#71717A",         # Zinc 500 (Muted)
+    # 2. Text (Light Grays)
+    "text_primary": "#e8eaed",       # Main text
+    "text_secondary": "#9aa0a6",     # Secondary text
+    "text_muted": "#71717a",         # Muted text
     
-    # Status colors
-    "success": "#22C55E",            # Green 500
-    "success_bg": "#14532D",         # Green 900
-    "warning": "#EAB308",            # Yellow 500
-    "warning_bg": "#713F12",         # Yellow 900
-    "error": "#EF4444",              # Red 500
-    "error_bg": "#7F1D1D",           # Red 900
-    "info": "#3B82F6",               # Blue 500
-    "info_bg": "#1E3A5F",            # Blue 900
+    # 3. Accent Blue (Interactive elements)
+    "accent": "#3B82F6",             # Primary accent - buttons, links, active states
+    "accent_hover": "#60A5FA",       # Lighter blue for hover
+    "accent_bg": "#1E3A5F",          # Dark blue background
     
-    # Border colors
-    "border": "#3F3F46",             # Zinc 700
-    "border_light": "#52525B",       # Zinc 600
+    # 4. Success Green (Completion, validation)
+    "success": "#00e676",            # Success state, completed items
+    "success_dim": "#10b981",        # Dimmer green for subtle states
     
-    # Special
-    "accent": "#A1A1AA",             # Zinc 400
-    "highlight": "#FAFAFA",          # White highlight
+    # === DERIVED COLORS (from core palette) ===
     
-    # Step states
-    "step_inactive": "#3F3F46",      # Zinc 700 - dimmed
-    "step_active": "#3B82F6",        # Blue 500 - current step
-    "step_completed": "#22C55E",     # Green 500 - done
-    "step_active_bg": "#1E293B",     # Slate 800 - active background
+    # Borders (from backgrounds)
+    "border": "#2a2a2a",             # Same as bg_light
+    "border_light": "#3a3a3a",       # Slightly lighter
     
-    # Syntax highlighting for SRT editor
-    "syntax_number": "#60A5FA",      # Blue 400 - entry numbers
-    "syntax_timestamp": "#34D399",   # Emerald 400 - timestamps
-    "syntax_arrow": "#A1A1AA",       # Zinc 400 - arrows (-->)
-    "syntax_text": "#FAFAFA",        # White - subtitle text
-    "syntax_error": "#F87171",       # Red 400 - errors
-    "syntax_comment": "#71717A",     # Zinc 500 - comments
+    # Status colors (minimal, using core colors)
+    "error": "#ff1744",              # Red for errors (only additional color needed)
+    "warning": "#EAB308",            # Yellow for warnings (only additional color needed)
+    
+    # Background colors for status (using existing colors)
+    "success_bg": "#14532D",         # Dark green background
+    "error_bg": "#7F1D1D",           # Dark red background
+    "warning_bg": "#713F12",         # Dark yellow background
+    "info_bg": "#1E3A5F",            # Dark blue background (same as accent_bg)
+    
+    # Aliases for consistency
+    "primary": "#e8eaed",            # Alias for text_primary
+    "primary_hover": "#f0f0f0",      # Lighter text for hover states
+    "primary_light": "#c0c0c0",      # Muted light text
+    "highlight": "#e8eaed",          # Alias for text_primary
+    "info": "#3B82F6",               # Alias for accent
+    
+    # Step states (using core colors)
+    "step_inactive": "#71717a",      # text_muted
+    "step_active": "#3B82F6",        # accent
+    "step_completed": "#00e676",     # success
+    "step_active_bg": "#1a1a1a",     # bg_medium
+    
+    # Syntax highlighting (using core colors)
+    "syntax_number": "#60A5FA",      # accent_hover
+    "syntax_timestamp": "#00e676",   # success
+    "syntax_arrow": "#9aa0a6",       # text_secondary
+    "syntax_text": "#e8eaed",        # text_primary
+    "syntax_error": "#ff1744",       # error
+    "syntax_comment": "#71717a",     # text_muted
 }
 
 # Font settings
 FONTS = {
-    "family": "Segoe UI",
-    "heading_size": 16,     # Reduced from 18
-    "subheading_size": 13,  # Reduced from 14
-    "body_size": 12,
-    "small_size": 10,
-    "mono_family": "Consolas",
+    "family": "Consolas",        # Terminal-style monospace font
+    "heading_size": 14,          # Increased from 11
+    "subheading_size": 12,       # Increased from 10
+    "body_size": 12,             # Increased from 10
+    "small_size": 11,            # Increased from 9
+    "mono_family": "Consolas",   # Monospace
 }
 
-# Spacing
-# Spacing - Ultra Compact Mode
+# Spacing - Enhanced System
 SPACING = {
-    "xs": 2,
-    "sm": 4,
-    "md": 4,   # Extra Compact
-    "lg": 6,   # Extra Compact
-    "xl": 8,   # Extra Compact
+    "xxs": 2,   # Minimal spacing
+    "xs": 4,    # Very tight
+    "sm": 8,    # Tight
+    "md": 12,   # Normal
+    "lg": 16,   # Comfortable
+    "xl": 24,   # Spacious
+    "xxl": 32,  # Very spacious
 }
 
 # Border radius - Rounded corners (User request)
@@ -166,7 +177,7 @@ def get_frame_style(variant: str = "default") -> dict:
             "corner_radius": RADIUS["lg"],
         },
         "card": {
-            "fg_color": COLORS["bg_card"],
+            "fg_color": COLORS["bg_medium"],  # Changed from bg_card
             "corner_radius": RADIUS["lg"],
         },
         "transparent": {
