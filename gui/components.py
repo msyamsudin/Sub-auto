@@ -106,7 +106,7 @@ class CustomTitleBar(ctk.CTkFrame):
         if self.show_settings and self.on_settings:
             self.settings_btn = ctk.CTkButton(
                 controls_frame,
-                text="⚙",
+                text="☰",
                 width=btn_width,
                 height=btn_height,
                 corner_radius=0,
@@ -557,9 +557,9 @@ class TrackListItem(ctk.CTkFrame):
             variable=self.is_selected,
             command=self._on_checkbox_change,
             width=24,
-            fg_color=COLORS["primary"],
-            hover_color=COLORS["primary_hover"],
-            border_color=COLORS["border"]
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_hover"],
+            border_color=COLORS["text_muted"] # Improved border contrast
         )
         self.checkbox.grid(row=0, column=0, padx=SPACING["sm"], pady=SPACING["sm"])
         
@@ -2604,3 +2604,202 @@ class SubtitleEditor(ctk.CTkToplevel):
         # Treat as discard
         self._on_discard()
 
+
+class VerticalStepperItem(ctk.CTkFrame):
+    """
+    A single step item for the vertical stepper.
+    """
+    def __init__(
+        self,
+        master,
+        step_number: int,
+        title: str,
+        description: Optional[str] = None,
+        is_active: bool = False,
+        is_completed: bool = False,
+        is_last: bool = False,
+        on_click: Optional[Callable] = None,
+        **kwargs
+    ):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        
+        self.step_number = step_number
+        self.title = title
+        self.description = description
+        self.is_active = is_active
+        self.is_completed = is_completed
+        self.is_last = is_last
+        self.on_click = on_click
+        
+        self._setup_ui()
+        
+    def _setup_ui(self):
+        self.grid_columnconfigure(1, weight=1)
+        
+        # Colors based on state
+        if self.is_active:
+            icon_color = COLORS["accent"] # Changed from primary (text color) to accent (blue)
+            text_color = COLORS["text_primary"]
+            desc_color = COLORS["text_secondary"]
+            font_weight = "bold"
+        elif self.is_completed:
+            icon_color = COLORS["success"]
+            text_color = COLORS["text_primary"]
+            desc_color = COLORS["text_muted"]
+            font_weight = "normal"
+        else:
+            icon_color = COLORS["border"]
+            text_color = COLORS["text_muted"]
+            desc_color = COLORS["text_muted"]
+            font_weight = "normal"
+            
+        # Icon / Number
+        self.icon_frame = ctk.CTkFrame(
+            self,
+            width=32,
+            height=32,
+            corner_radius=16,
+            fg_color=icon_color
+        )
+        self.icon_frame.grid(row=0, column=0, sticky="n")
+        
+        # Center the number/check
+        icon_text = "✓" if self.is_completed and not self.is_active else str(self.step_number)
+        
+        self.icon_label = ctk.CTkLabel(
+            self.icon_frame,
+            text=icon_text,
+            font=(FONTS["family"], 14, "bold"),
+            text_color="white" if self.is_active or self.is_completed else COLORS["text_secondary"]
+        )
+        self.icon_label.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Title
+        self.title_label = ctk.CTkLabel(
+            self,
+            text=self.title,
+            font=(FONTS["family"], FONTS["body_size"], font_weight),
+            text_color=text_color
+        )
+        self.title_label.grid(row=0, column=1, sticky="w", padx=SPACING["md"], pady=(2, 0))
+        
+        # Description (Subtitle)
+        if self.description:
+            self.desc_label = ctk.CTkLabel(
+                self,
+                text=self.description,
+                font=(FONTS["family"], FONTS["small_size"]),
+                text_color=desc_color,
+                wraplength=160,
+                justify="left"
+            )
+            self.desc_label.grid(row=1, column=1, sticky="w", padx=SPACING["md"], pady=(0, 4))
+        
+        # Connector Line (if not last)
+        if not self.is_last:
+            self.line = ctk.CTkFrame(
+                self,
+                width=2,
+                height=15, # Minimum height
+                fg_color=COLORS["success"] if self.is_completed else COLORS["border"]
+            )
+            
+            # If description exists, line needs to span more rows or be placed differently
+            # Simple grid approach: place in row 1 (and 2 if desc)
+            row_span = 2 if self.description else 1
+            self.line.grid(row=1, column=0, rowspan=row_span, sticky="n", pady=(2, 0))
+            # Ensure line stretches to fill height
+            self.grid_rowconfigure(1, weight=1)
+            
+        # Click event
+        if self.on_click:
+            for widget in [self, self.title_label, self.icon_frame, self.icon_label]:
+                widget.bind("<Button-1>", lambda e: self.on_click(self.step_number))
+            if self.description:
+                self.desc_label.bind("<Button-1>", lambda e: self.on_click(self.step_number))
+            
+            # Cursor
+            self.configure(cursor="hand2")
+            self.title_label.configure(cursor="hand2")
+            self.icon_frame.configure(cursor="hand2")
+            self.icon_label.configure(cursor="hand2")
+            if self.description:
+                self.desc_label.configure(cursor="hand2")
+
+
+class VerticalStepper(ctk.CTkFrame):
+    """
+    Vertical stepper navigation component.
+    """
+    def __init__(
+        self,
+        master,
+        steps: List[str],
+        current_step: int = 1,
+        on_step_change: Optional[Callable[[int], None]] = None,
+        **kwargs
+    ):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        
+        self.steps = steps
+        self.current_step = current_step
+        self.on_step_change = on_step_change
+        self.step_descriptions = {} # step_idx -> text
+        self.completed_steps = set() # Set of completed step indices
+        self.items = []
+        
+        self._refresh()
+        
+    def _refresh(self):
+        # Clear
+        for widget in self.winfo_children():
+            widget.destroy()
+        self.items = []
+        
+        for i, title in enumerate(self.steps, 1):
+            is_active = (i == self.current_step)
+            is_completed = (i in self.completed_steps) or (i < self.current_step)
+            is_last = (i == len(self.steps))
+            
+            desc = self.step_descriptions.get(i)
+            
+            item = VerticalStepperItem(
+                self,
+                step_number=i,
+                title=title,
+                description=desc,
+                is_active=is_active,
+                is_completed=is_completed,
+                is_last=is_last,
+                on_click=self._handle_click
+            )
+            item.pack(fill="x", pady=0)
+            self.items.append(item)
+            
+    def _handle_click(self, step_number: int):
+        # Prevent jumping ahead to incomplete steps if desired
+        # For now, allow navigation to any previous step or the current step
+        if self.on_step_change:
+            self.on_step_change(step_number)
+            
+    def set_step(self, step_number: int):
+        if 1 <= step_number <= len(self.steps):
+            self.current_step = step_number
+            self._refresh()
+            
+    def update_step_description(self, step_number: int, description: str):
+        """Update the description/subtitle for a step."""
+        if 1 <= step_number <= len(self.steps):
+            self.step_descriptions[step_number] = description
+            self._refresh()
+            
+    def clear_step_description(self, step_number: int):
+        """Clear description for a step."""
+        if step_number in self.step_descriptions:
+            del self.step_descriptions[step_number]
+            self._refresh()
+            
+    def set_completed_steps(self, steps: List[int]):
+        """Set the list of completed steps."""
+        self.completed_steps = set(steps)
+        self._refresh()

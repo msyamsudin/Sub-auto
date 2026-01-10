@@ -20,9 +20,8 @@ from .styles import (
 )
 from .components import (
     FileDropZone, TrackListItem, ProgressPanel, SettingsRow, StatusBadge, APIKeyPanel, SummaryWindow,
-    LogPanel, CollapsibleFrame, CustomTitleBar, SubtitleEditor
+    LogPanel, CollapsibleFrame, CustomTitleBar, SubtitleEditor, VerticalStepper
 )
-from .step_card import StepCard
 from .settings_dialog import SettingsDialog
 from .toast import ToastManager
 from .processing_view import ProcessingView
@@ -154,7 +153,7 @@ class SubAutoApp(ctk.CTk):
             self.logger.warning(f"Failed to setup window style: {e}")
     
     def _setup_ui(self):
-        """Setup the main UI - horizontal 2-column layout."""
+        """Setup the main UI - Sidebar + Content layout."""
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)  # Content area expands
         
@@ -169,92 +168,168 @@ class SubAutoApp(ctk.CTk):
         )
         self.title_bar.grid(row=0, column=0, sticky="ew")
         
-        # Main content - scrollable
-        self.content = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=SPACING["md"], pady=(0, SPACING["md"]))
+        # Main container
+        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_container.grid(row=1, column=0, sticky="nsew")
         
-        # === HORIZONTAL LAYOUT: 2 Columns ===
-        self.content.grid_columnconfigure(0, weight=2)  # Left panel: 40%
-        self.content.grid_columnconfigure(1, weight=3)  # Right panel: 60%
-        self.content.grid_rowconfigure(0, weight=1)
+        self.main_container.grid_columnconfigure(1, weight=1) # Content Area
+        self.main_container.grid_rowconfigure(0, weight=1)
         
-        # Left Panel Container
-        self.left_panel = ctk.CTkFrame(self.content, fg_color="transparent")
-        self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, SPACING["sm"]))
-        self.left_panel.grid_columnconfigure(0, weight=1)
+        # === Sidebar (Left) ===
+        self.sidebar = ctk.CTkFrame(self.main_container, fg_color=COLORS["bg_medium"], width=240, corner_radius=0)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid_propagate(False)
         
-        # Right Panel Container
-        self.right_panel = ctk.CTkFrame(self.content, fg_color="transparent")
-        self.right_panel.grid(row=0, column=1, sticky="nsew")
-        self.right_panel.grid_columnconfigure(0, weight=1)
+        # Stepper in Sidebar
+        self.stepper = VerticalStepper(
+            self.sidebar,
+            steps=["Select File", "Configuration", "Translation", "Review"],
+            current_step=1,
+            on_step_change=self._on_step_change
+        )
+        self.stepper.pack(fill="x", padx=SPACING["md"], pady=SPACING["xl"])
         
-        # Normal view container (for compatibility)
-        self.normal_view = self.content
+        # Background Logo or info at bottom of sidebar
         
-        # Processing view (hidden initially)
+        # === Content Area (Right) ===
+        self.content_area = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.content_area.grid(row=0, column=1, sticky="nsew", padx=SPACING["lg"], pady=SPACING["md"])
+        self.content_area.grid_columnconfigure(0, weight=1)
+        self.content_area.grid_rowconfigure(0, weight=1)
+        
+        # Processing view (hidden initially, overlay)
         self.processing_view = ProcessingView(
-            self.content,
+            self.content_area,
             logger_instance=self.logger,
             on_pause=self._pause_translation,
             on_cancel=self._cancel_translation
         )
         
-        # Step 1: File Selection (LEFT PANEL)
-        self._create_step1()
+        # Initialize Step Frames
+        self.step_frames = {}
+        self._create_step_frames()
         
-        # Step 2: Track Selection (LEFT PANEL)
-        self._create_step2()
+        # Show initial step
+        self._show_step(1)
         
-        # Step 3: Translation Options (RIGHT PANEL)
-        self._create_step3()
-        
-        # Preview/Status Panel (RIGHT PANEL)
-        self._create_preview_panel()
-        
-        # Footer with action buttons (BOTTOM, FULL WIDTH)
+        # Create persistent footer
         self._create_footer()
         
-        # Initial step states
-        self._update_step_states()
+    def _create_step_frames(self):
+        """Initialize frames for each step."""
+        # Step 1: File Selection
+        self.step_frames[1] = self._create_step1_frame()
+        
+        # Step 2: Configuration
+        self.step_frames[2] = self._create_step2_frame()
+        
+        # Step 3: Progress/Action (Now merged into Configuration or separate?)
+        # Logic change: 
+        # Old Step 3 was "Translation Options".
+        # New Step 3 is "Processing" (actually ProcessingView handles this).
+        # New Step 4 is "Review".
+        
+        # Let's map:
+        # Step 1: File
+        # Step 2: Tracks + Options (Configuration)
+        # Step 3: Processing (Placeholder for now, will switch to processing view)
+        # Step 4: Review (Summary/Editor)
+        
+        # Implementation Detail:
+        # I will keep _create_step3 for "Processing" placeholder or just use the ProcessingView.
+        # But for the stepper navigation, "Translation" is step 3.
+        
+        pass 
+
+    def _show_step(self, step_idx: int):
+        """Switch to specific step view."""
+        # Hide current contents
+        for widget in self.content_area.winfo_children():
+            widget.pack_forget()
+            widget.grid_forget()
+            
+        # Update Stepper UI
+        self.stepper.set_step(step_idx)
+        
+        # Show new content
+        if step_idx == 3:
+             # Processing Step
+             if self.is_processing:
+                 self.processing_view.pack(fill="both", expand=True)
+             else:
+                 # Show 'Ready to Start' or similar if not processing
+                 # For now, let's just show Step 2 content but with focus on Start button?
+                 # Or maybe Step 3 IS the execution phase.
+                 pass
+        elif step_idx in self.step_frames:
+            self.step_frames[step_idx].pack(fill="both", expand=True)
+            
+    def _on_step_change(self, step_idx: int):
+        """Handle stepper click."""
+        # Validation logic before switching
+        if step_idx > 1 and not self.current_file:
+            self.toast.warning("Please select a file first")
+            return
+            
+        if step_idx > 2 and self.selected_track_id is None:
+             self.toast.warning("Please select a subtitle track first")
+             return
+             
+        self._show_step(step_idx)
     
-    def _create_step1(self):
-        """Create Step 1: File Selection (LEFT PANEL)."""
-        self.step1 = StepCard(
-            self.left_panel,
-            step_number=1,
-            title="Select Video File",
-            state="active"
+    def _create_step1_frame(self):
+        """Create Frame for Step 1: File Selection."""
+        frame = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        frame.grid_columnconfigure(0, weight=1)
+        
+        # Header
+        header = ctk.CTkLabel(
+            frame, 
+            text="Select Video File", 
+            **get_label_style("heading")
         )
-        self.step1.pack(fill="x", pady=(0, SPACING["md"]))
+        header.pack(anchor="w", pady=(0, SPACING["lg"]))
         
-        content = self.step1.get_content_frame()
-        
-        # File drop zone - larger and more prominent
+        # File Drop Zone
         self.file_drop = FileDropZone(
-            content,
+            frame,
             on_file_selected=self._on_file_selected,
-            height=120  # Increased from 100
+            height=200
         )
-        self.file_drop.pack(fill="x")
-    
-    def _create_step2(self):
-        """Create Step 2: Track Selection (LEFT PANEL)."""
-        self.step2 = StepCard(
-            self.left_panel,
-            step_number=2,
-            title="Select Subtitle Track",
-            state="inactive"
-        )
-        self.step2.pack(fill="x", pady=(0, SPACING["md"]))
+        self.file_drop.pack(fill="x", pady=(0, SPACING["xl"]))
         
-        content = self.step2.get_content_frame()
+        # Recent Files (Placeholder) or Instructions
+        info_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        info_frame.pack(fill="x")
         
-        # Tracks container
+        ctk.CTkLabel(
+            info_frame,
+            text="💡 Supported formats: .mkv (Matroska Video)",
+            **get_label_style("muted")
+        ).pack(anchor="w")
+        
+        return frame
+
+    def _create_step2_frame(self):
+        """Create Frame for Step 2: Configuration (Tracks + Options)."""
+        frame = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(0, weight=1)
+        
+        # Split into Left (Tracks) and Right (Options)
+        # Or Top (Tracks) and Bottom (Options)?
+        # Let's use Top/Bottom split for vertical flow in this step
+        
+        # === subtitle tracks section ===
+        tracks_section = CollapsibleFrame(frame, title="Subtitle Tracks")
+        tracks_section.pack(fill="x", pady=(0, SPACING["md"]))
+        
+        content = tracks_section.content_frame
+        
         self.tracks_frame = ctk.CTkFrame(content, fg_color="transparent")
         self.tracks_frame.pack(fill="x")
         self.tracks_frame.grid_columnconfigure(0, weight=1)
         
-        # Placeholder text
         self.no_tracks_label = ctk.CTkLabel(
             self.tracks_frame,
             text="Select an MKV file to see subtitle tracks",
@@ -263,48 +338,36 @@ class SubAutoApp(ctk.CTk):
         self.no_tracks_label.grid(row=0, column=0, pady=SPACING["lg"])
         
         self.track_items: List[TrackListItem] = []
-    
-    def _create_step3(self):
-        """Create Step 3: Translation Options (RIGHT PANEL)."""
-        self.step3 = StepCard(
-            self.right_panel,
-            step_number=3,
-            title="Translation Options",
-            state="inactive"
-        )
-        self.step3.pack(fill="x", pady=(0, SPACING["md"]))
         
-        content = self.step3.get_content_frame()
+        # === Translation Options Section ===
+        options_section = CollapsibleFrame(frame, title="Translation Settings")
+        options_section.pack(fill="x", pady=(0, SPACING["md"]))
         
-        # Options grid
-        options_frame = ctk.CTkFrame(content, fg_color="transparent")
-        options_frame.pack(fill="x")
-        options_frame.grid_columnconfigure((0, 1), weight=1)
+        opts_content = options_section.content_frame
+        opts_content.grid_columnconfigure((0, 1), weight=1)
         
         # Source language
         self.source_lang_row = SettingsRow(
-            options_frame,
+            opts_content,
             label="From",
             input_type="dropdown",
             options=["English", "Japanese", "Korean", "Chinese", "Auto-detect"],
             default_value="English"
         )
         self.source_lang_row.grid(row=0, column=0, sticky="ew", padx=(0, SPACING["sm"]), pady=SPACING["xs"])
-        self.source_lang_row.label.configure(width=50)
         
         # Target language
         self.target_lang_row = SettingsRow(
-            options_frame,
+            opts_content,
             label="To",
             input_type="dropdown",
             options=["Indonesian"],
             default_value="Indonesian"
         )
         self.target_lang_row.grid(row=0, column=1, sticky="ew", padx=(SPACING["sm"], 0), pady=SPACING["xs"])
-        self.target_lang_row.label.configure(width=50)
         
         # Model selection row
-        model_frame = ctk.CTkFrame(options_frame, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
+        model_frame = ctk.CTkFrame(opts_content, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
         model_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(SPACING["md"], 0))
         model_frame.grid_columnconfigure(2, weight=1)
         
@@ -315,7 +378,6 @@ class SubAutoApp(ctk.CTk):
         )
         model_label.grid(row=0, column=0, padx=SPACING["md"], pady=SPACING["md"])
         
-        # Model dropdown
         self.model_dropdown = ctk.CTkOptionMenu(
             model_frame,
             values=["Not connected"],
@@ -326,12 +388,12 @@ class SubAutoApp(ctk.CTk):
             dropdown_fg_color=COLORS["bg_dark"],
             dropdown_hover_color=COLORS["bg_light"],
             corner_radius=RADIUS["md"],
-            width=180,
+            width=200,
             state="disabled"
         )
         self.model_dropdown.grid(row=0, column=1, padx=SPACING["sm"], pady=SPACING["md"])
         
-        # Status indicator with token estimate
+        # Status indicator
         status_frame = ctk.CTkFrame(model_frame, fg_color="transparent")
         status_frame.grid(row=0, column=2, sticky="w", padx=SPACING["sm"])
         
@@ -352,7 +414,7 @@ class SubAutoApp(ctk.CTk):
         )
         self.cost_estimate_label.pack(side="left", padx=(SPACING["sm"], 0))
         
-        # Connect button (only show if not auto-connected)
+        # Connect button
         self.validate_btn = ctk.CTkButton(
             model_frame,
             text="Connect",
@@ -360,59 +422,40 @@ class SubAutoApp(ctk.CTk):
             command=self._validate_api,
             **get_button_style("secondary")
         )
-        # Initially hidden if we auto-connect, shown on error
-        # self.validate_btn.grid(row=0, column=3, padx=SPACING["md"], pady=SPACING["md"])
-    
-    def _create_preview_panel(self):
-        """Create Preview/Status Panel (RIGHT PANEL)."""
-        preview_card = ctk.CTkFrame(
-            self.right_panel,
-            fg_color=COLORS["bg_medium"],
-            corner_radius=RADIUS["lg"]
-        )
-        preview_card.pack(fill="both", expand=True, pady=(0, SPACING["md"]))
         
-        # Header
-        header = ctk.CTkLabel(
-            preview_card,
-            text="File Info",
-            **get_label_style("subheading")
-        )
-        header.pack(anchor="w", padx=SPACING["md"], pady=(SPACING["md"], SPACING["sm"]))
+        # === Footer Actions for Step 2 ===
+        # Add a "Start Processing" button directly here?
+        # Or rely on the global footer (which I haven't refactored yet).
+        # Global footer is safer for now.
         
-        # Info container
-        self.preview_info_frame = ctk.CTkFrame(preview_card, fg_color="transparent")
-        self.preview_info_frame.pack(fill="both", expand=True, padx=SPACING["md"], pady=(0, SPACING["md"]))
-        
-        # Placeholder text
-        self.preview_placeholder = ctk.CTkLabel(
-            self.preview_info_frame,
-            text="No file selected",
-            **get_label_style("muted")
-        )
-        self.preview_placeholder.pack(expand=True)
+        return frame
     
     def _create_footer(self):
         """Create footer with action buttons (FULL WIDTH)."""
-        # Add separator line
-        separator = ctk.CTkFrame(self.content, height=2, fg_color=COLORS["bg_medium"])
-        separator.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(SPACING["lg"], SPACING["md"]))
+        # Footer container at the bottom of the main window
+        self.footer_frame = ctk.CTkFrame(self, fg_color="transparent", height=60)
+        self.footer_frame.grid(row=2, column=0, sticky="ew", padx=SPACING["md"], pady=(0, SPACING["md"]))
+        self.footer_frame.grid_columnconfigure(0, weight=1)
         
-        # Footer spans both columns
-        footer = ctk.CTkFrame(self.content, fg_color="transparent")
-        footer.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, SPACING["sm"]))
-        footer.grid_columnconfigure(0, weight=1)
+        # Separator (optional, maybe inside footer frame)
+        separator = ctk.CTkFrame(self.footer_frame, height=2, fg_color=COLORS["border"])
+        separator.pack(fill="x", pady=(0, SPACING["sm"]))
+        
+        # Content frame for buttons/status inside footer
+        content = ctk.CTkFrame(self.footer_frame, fg_color="transparent")
+        content.pack(fill="x", expand=True)
+        content.grid_columnconfigure(0, weight=1)
         
         # Left side - status
         self.status_label = ctk.CTkLabel(
-            footer,
+            content,
             text="",
             **get_label_style("muted")
         )
         self.status_label.grid(row=0, column=0, sticky="w")
         
         # Right side - buttons
-        buttons = ctk.CTkFrame(footer, fg_color="transparent")
+        buttons = ctk.CTkFrame(content, fg_color="transparent")
         buttons.grid(row=0, column=1, sticky="e")
         
         self.reset_btn = ctk.CTkButton(
@@ -457,50 +500,53 @@ class SubAutoApp(ctk.CTk):
         self.start_btn.configure(state="disabled")
     
     def _update_step_states(self):
-        """Update step card states based on current progress."""
+        """Update UI states based on current progress."""
         has_file = self.current_file is not None
         has_track = self.selected_track_id is not None
         api_ready = self.api_validated
         
-        # Step 1: Always active, completed when file selected
+        completed_indices = []
+        
+        # Step 1: File Selection
         if has_file:
-            self.step1.set_state("completed")
+            completed_indices.append(1)
             path = Path(self.current_file)
             size = path.stat().st_size / (1024 * 1024 * 1024)  # GB
-            self.step1.set_subtitle(f"{path.name} ({size:.2f} GB)")
+            self.stepper.update_step_description(1, f"{path.name} ({size:.2f} GB)")
         else:
-            self.step1.set_state("active")
-            self.step1.clear_subtitle()
+            self.stepper.clear_step_description(1)
         
-        # Step 2: Active after file, completed when track selected
-        if has_file:
-            if has_track:
-                self.step2.set_state("completed")
-                # Find track info for subtitle
-                for track in self.subtitle_tracks:
-                    if track.track_id == self.selected_track_id:
-                        self.step2.set_subtitle(f"Track {track.track_id} - {track.language.upper()}")
-                        break
-            else:
-                self.step2.set_state("active")
-                self.step2.clear_subtitle()
-        else:
-            self.step2.set_state("inactive")
-        
-        # Step 3: Active after track selected
+        # Step 2: Configuration
         if has_file and has_track:
+            # Find track info
+            track_info = "Track Selected"
+            for track in self.subtitle_tracks:
+                if track.track_id == self.selected_track_id:
+                    track_info = f"Track {track.track_id} - {track.language.upper()}"
+                    break
+            
+            # Show track info and if API is ready
+            status_text = track_info
             if api_ready:
-                self.step3.set_state("completed")
-                self.step3.set_subtitle(f"{self.selected_model}")
+                status_text += f"\nModel: {self.selected_model or 'Default'}"
+                completed_indices.append(2)
             else:
-                self.step3.set_state("active")
-                self.step3.clear_subtitle()
+                 pass # Step 2 not complete until API ready/connected?
+                 
+            self.stepper.update_step_description(2, status_text)
         else:
-            self.step3.set_state("inactive")
+            self.stepper.clear_step_description(2)
+            
+        # Update completed steps
+        self.stepper.set_completed_steps(completed_indices)
+        
+        # Step 3: Active after track selected & API ready
+        # This is handled by "Start" button mainly
         
         # Update start button
         can_start = has_file and has_track and api_ready
-        self.start_btn.configure(state="normal" if can_start else "disabled")
+        if hasattr(self, 'start_btn'):
+            self.start_btn.configure(state="normal" if can_start else "disabled")
         
         # Update title bar API status
         self.title_bar.set_api_status(api_ready, self.selected_model or "")
@@ -515,7 +561,8 @@ class SubAutoApp(ctk.CTk):
             not self.current_file or 
             self.selected_track_id is None or
             not self.api_validated):
-            self.cost_estimate_label.configure(text="")
+            if hasattr(self, 'cost_estimate_label'):
+                self.cost_estimate_label.configure(text="")
             return
         
         try:
@@ -524,7 +571,8 @@ class SubAutoApp(ctk.CTk):
             model_info = api_manager.get_selected_model_info()
             
             if not model_info:
-                self.cost_estimate_label.configure(text="")
+                if hasattr(self, 'cost_estimate_label'):
+                    self.cost_estimate_label.configure(text="")
                 return
             
             # Check cache - avoid re-extracting subtitle
@@ -536,7 +584,8 @@ class SubAutoApp(ctk.CTk):
                 total_chars, line_count = self._subtitle_cache[cache_key]
             else:
                 # Show loading indicator
-                self.cost_estimate_label.configure(text="💰 Calculating...")
+                if hasattr(self, 'cost_estimate_label'):
+                    self.cost_estimate_label.configure(text="💰 Calculating...")
                 
                 # Run extraction in background
                 def do_estimate():
@@ -576,7 +625,8 @@ class SubAutoApp(ctk.CTk):
             
         except Exception as e:
             self.logger.warning(f"Failed to estimate list: {e}")
-            self.cost_estimate_label.configure(text="")
+            if hasattr(self, 'cost_estimate_label'):
+                self.cost_estimate_label.configure(text="")
     
     def _display_token_estimate(self, model_info, total_chars: int, line_count: int):
         """Display the token estimate based on cached subtitle data."""
@@ -594,13 +644,14 @@ class SubAutoApp(ctk.CTk):
         # Display only tokens, NO cost
         display_text = f"💰 ~{token_text} tokens"
         
-        self.cost_estimate_label.configure(text=display_text)
+        if hasattr(self, 'cost_estimate_label'):
+            self.cost_estimate_label.configure(text=display_text)
     
     def _open_settings(self):
         """Open settings view."""
         if self.settings_view:
             return
-
+ 
         # Create settings view
         self.settings_view = SettingsDialog(
             self,
@@ -610,9 +661,13 @@ class SubAutoApp(ctk.CTk):
         )
         
         # Determine current content to hide/overlay
-        # We want to cover everything below the main title bar (row 1 and 2)
-        self.settings_view.grid(row=1, column=0, rowspan=2, sticky="nsew")
+        # Cover the main container
+        self.settings_view.grid(row=1, column=0, rowspan=2, sticky="nsew") # Span footer row too
         self.settings_view.lift()  # Ensure it's on top
+        
+        # Hide Footer
+        if hasattr(self, 'footer_frame'):
+            self.footer_frame.grid_remove()
         
         # Set initial values
         self.settings_view.remove_subs_var.set(self.remove_old_subs)
@@ -622,6 +677,10 @@ class SubAutoApp(ctk.CTk):
         if self.settings_view:
             self.settings_view.destroy()
             self.settings_view = None
+            
+        # Restore Footer
+        if hasattr(self, 'footer_frame'):
+            self.footer_frame.grid()
     
     def _on_settings_save(self, settings: dict):
         """Handle settings save."""
@@ -648,6 +707,10 @@ class SubAutoApp(ctk.CTk):
         self.current_file = file_path
         self._load_subtitle_tracks()
         self._update_step_states()
+        
+        # Auto-advance to Step 2
+        self._on_step_change(2)
+
     
     def _load_subtitle_tracks(self):
         """Load subtitle tracks from the selected MKV file."""
@@ -697,10 +760,6 @@ class SubAutoApp(ctk.CTk):
                 self.selected_track_id = self.subtitle_tracks[0].track_id
                 self._update_step_states()
                 
-                # Auto-collapse step 1 to save space
-                self.step1.collapse()
-                self.after(50, self._reset_scroll)
-                
         except Exception as e:
             self.no_tracks_label.configure(
                 text=f"Error: {str(e)}",
@@ -716,12 +775,6 @@ class SubAutoApp(ctk.CTk):
                 if item.track_id != track_id:
                     item.deselect()
             self.selected_track_id = track_id
-            
-            # Auto-collapse Step 2 when there are multiple tracks (>2) to save space
-            if len(self.track_items) > 2:
-                self.step2.collapse()
-                # Workaround: Reset scroll to prevent content disappearance when collapsing from bottom
-                self.after(50, self._reset_scroll)
         else:
             if self.selected_track_id == track_id:
                 self.selected_track_id = None
@@ -830,15 +883,15 @@ class SubAutoApp(ctk.CTk):
             self.after(1000, self._validate_api)
     
     def _enter_processing_mode(self):
-        """Switch to compact processing mode."""
-        # Hide left and right panels
-        self.left_panel.grid_remove()
-        self.right_panel.grid_remove()
+        """Switch to processing mode (Step 3)."""
+        self.is_processing = True
+        self.title_bar.title_label.configure(text=f"{self.APP_TITLE} - Processing")
         
-        # Show processing view in the content area (spanning both columns)
-        self.processing_view.grid(row=0, column=0, columnspan=2, sticky="nsew", pady=(0, SPACING["md"]))
+        # Switch to Step 3
+        self.stepper.set_step(3)
+        self._show_step(3)
         
-        # Set file info
+        # Set file info in processing view
         if self.current_file:
             filename = Path(self.current_file).name
             track_info = ""
@@ -848,25 +901,20 @@ class SubAutoApp(ctk.CTk):
                     break
             
             self.processing_view.set_file_info(filename, track_info)
-        
-        # Update window title
-        self.title_bar.title_label.configure(text=f"{self.APP_TITLE} - Processing")
-        
-        self.is_processing = True
     
     def _exit_processing_mode(self):
-        """Return to normal mode."""
-        # Hide processing view
-        self.processing_view.grid_remove()
-        
-        # Show left and right panels again
-        self.left_panel.grid()
-        self.right_panel.grid()
-        
-        # Reset window title
+        """Return to normal mode or advance to review."""
+        self.is_processing = False
         self.title_bar.title_label.configure(text=self.APP_TITLE)
         
-        self.is_processing = False
+        # If cancelled, go back to configuration (Step 2)
+        if self.should_cancel:
+             self._on_step_change(2)
+        # If completed (logic handled in _on_translation_complete), we might stay or go to step 4
+        # For general exit, let's assume we just update the view
+        elif self.active_translator is None:
+             # Just refresh current step
+             self._show_step(self.stepper.current_step)
     
     def _start_translation(self):
         """Start the translation process."""
@@ -1315,6 +1363,7 @@ class SubAutoApp(ctk.CTk):
         self.is_paused = False
         self.should_cancel = False
         
+        self._on_step_change(1) # Go back to step 1
         self._update_step_states()
         self.status_label.configure(text="")
         
@@ -1349,15 +1398,6 @@ class SubAutoApp(ctk.CTk):
         self.quit()
         self.destroy()
         sys.exit(0)
-
-
-    
-    def _reset_scroll(self):
-        """Reset scroll position to top."""
-        try:
-            self.content._parent_canvas.yview_moveto(0.0)
-        except Exception:
-            pass
 
 def run_app():
     """Run the Sub-auto application."""
