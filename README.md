@@ -1,5 +1,7 @@
 # Sub-auto
 
+<img width="1500" height="1000" alt="Image" src="https://github.com/user-attachments/assets/6dd3dc60-0547-4152-8d60-9814dcf45e68" />
+
 Alat otomatisasi untuk mengekstrak, menerjemahkan, dan menggabungkan subtitle pada file video MKV menggunakan LLM.
 
 ## Fitur
