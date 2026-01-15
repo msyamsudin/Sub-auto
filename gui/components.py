@@ -270,6 +270,11 @@ class CustomTitleBar(ctk.CTkFrame):
             self.api_status.configure(text=text, text_color=COLORS["success"])
         else:
             self.api_status.configure(text="⚠ API Not Configured", text_color=COLORS["warning"])
+            
+    def get_center_frame(self):
+        """Get the center frame for adding widgets."""
+        return self.drag_area
+
 
 class CollapsibleFrame(ctk.CTkFrame):
     """
@@ -2803,3 +2808,159 @@ class VerticalStepper(ctk.CTkFrame):
         """Set the list of completed steps."""
         self.completed_steps = set(steps)
         self._refresh()
+
+
+class HorizontalStepperItem(ctk.CTkFrame):
+    """
+    A single step item for the horizontal stepper.
+    """
+    def __init__(
+        self,
+        master,
+        step_number: int,
+        title: str,
+        is_active: bool = False,
+        is_completed: bool = False,
+        is_last: bool = False,
+        on_click: Optional[Callable] = None,
+        **kwargs
+    ):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        
+        self.step_number = step_number
+        self.title = title
+        self.is_active = is_active
+        self.is_completed = is_completed
+        self.is_last = is_last
+        self.on_click = on_click
+        
+        self._setup_ui()
+        
+    def _setup_ui(self):
+        # Style 3: Minimalist Underline
+        # - Text only (with number)
+        # - Active: Highlighted text + Underline bar
+        # - Completed: Green text
+        # - Inactive: Gray text
+        
+        # Colors & Font
+        if self.is_active:
+            text_color = COLORS["text_primary"]
+            font_weight = "bold"
+            underline_color = COLORS["info"] # Blue/Cyan for active
+        elif self.is_completed:
+            text_color = COLORS["success"]
+            font_weight = "normal"
+            underline_color = "transparent"
+        else:
+            text_color = COLORS["text_muted"]
+            font_weight = "normal"
+            underline_color = "transparent"
+            
+        # Main Container Layout
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1) # Text area
+        self.grid_rowconfigure(1, weight=0) # Underline area
+        
+        # Text Content
+        # Format: "1. Title"
+        display_text = f"{self.step_number}. {self.title}"
+        
+        self.title_label = ctk.CTkLabel(
+            self,
+            text=display_text,
+            font=(FONTS["family"], FONTS["body_size"], font_weight),
+            text_color=text_color
+        )
+        self.title_label.grid(row=0, column=0, padx=SPACING["md"], pady=(2, 2))
+        
+        # Underline Bar (Active Only)
+        if self.is_active:
+            self.underline = ctk.CTkFrame(
+                self,
+                width=0, # Will expand with sticky=ew
+                height=3,
+                fg_color=underline_color,
+                corner_radius=2
+            )
+            self.underline.grid(row=1, column=0, sticky="ew", padx=SPACING["md"])
+            
+        # Click binding
+        if self.on_click:
+            self.bind("<Button-1>", lambda e: self.on_click(self.step_number))
+            self.title_label.bind("<Button-1>", lambda e: self.on_click(self.step_number))
+            
+            self.configure(cursor="hand2")
+            self.title_label.configure(cursor="hand2")
+            if hasattr(self, 'underline'):
+                self.underline.bind("<Button-1>", lambda e: self.on_click(self.step_number))
+                self.underline.configure(cursor="hand2")
+
+
+class HorizontalStepper(ctk.CTkFrame):
+    """
+    Horizontal stepper navigation component.
+    """
+    def __init__(
+        self,
+        master,
+        steps: List[str],
+        current_step: int = 1,
+        on_step_change: Optional[Callable[[int], None]] = None,
+        **kwargs
+    ):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        
+        self.steps = steps
+        self.current_step = current_step
+        self.on_step_change = on_step_change
+        self.completed_steps = set()
+        self.step_descriptions = {} # Ignored but kept for interface compatibility
+        
+        self._refresh()
+        
+    def _refresh(self):
+        # Clear existing
+        for widget in self.winfo_children():
+            widget.destroy()
+            
+        # Centering container
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.pack(expand=True, anchor="center")
+        
+        for i, title in enumerate(self.steps, 1):
+            is_active = (i == self.current_step)
+            is_completed = (i in self.completed_steps) or (i < self.current_step)
+            is_last = (i == len(self.steps))
+            
+            item = HorizontalStepperItem(
+                container,
+                step_number=i,
+                title=title,
+                is_active=is_active,
+                is_completed=is_completed,
+                is_last=is_last,
+                on_click=self._handle_click
+            )
+            item.pack(side="left")
+            
+    def _handle_click(self, step_number: int):
+        if self.on_step_change:
+            self.on_step_change(step_number)
+            
+    def set_step(self, step_number: int):
+        if 1 <= step_number <= len(self.steps):
+            self.current_step = step_number
+            self._refresh()
+            
+    def update_step_description(self, step_number: int, description: str):
+        # Not used in horizontal layout
+        pass
+            
+    def clear_step_description(self, step_number: int):
+        pass
+            
+    def set_completed_steps(self, steps: List[int]):
+        self.completed_steps = set(steps)
+        self._refresh()
+

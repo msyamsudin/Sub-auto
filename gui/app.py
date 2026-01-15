@@ -20,7 +20,7 @@ from .styles import (
 )
 from .components import (
     FileDropZone, TrackListItem, ProgressPanel, SettingsRow, StatusBadge, APIKeyPanel, SummaryWindow,
-    LogPanel, CollapsibleFrame, CustomTitleBar, SubtitleEditor, VerticalStepper
+    LogPanel, CollapsibleFrame, CustomTitleBar, SubtitleEditor, VerticalStepper, HorizontalStepper
 )
 from .settings_dialog import SettingsDialog
 from .toast import ToastManager
@@ -153,7 +153,7 @@ class SubAutoApp(ctk.CTk):
             self.logger.warning(f"Failed to setup window style: {e}")
     
     def _setup_ui(self):
-        """Setup the main UI - Sidebar + Content layout."""
+        """Setup the main UI - Top Nav + Content layout."""
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)  # Content area expands
         
@@ -168,32 +168,26 @@ class SubAutoApp(ctk.CTk):
         )
         self.title_bar.grid(row=0, column=0, sticky="ew")
         
-        # Main container
-        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
-        self.main_container.grid(row=1, column=0, sticky="nsew")
-        
-        self.main_container.grid_columnconfigure(1, weight=1) # Content Area
-        self.main_container.grid_rowconfigure(0, weight=1)
-        
-        # === Sidebar (Left) ===
-        self.sidebar = ctk.CTkFrame(self.main_container, fg_color=COLORS["bg_medium"], width=240, corner_radius=0)
-        self.sidebar.grid(row=0, column=0, sticky="nsew")
-        self.sidebar.grid_propagate(False)
-        
-        # Stepper in Sidebar
-        self.stepper = VerticalStepper(
-            self.sidebar,
+        # Inject Horizontal Stepper into Title Bar
+        self.stepper = HorizontalStepper(
+            self.title_bar.get_center_frame(),
             steps=["Select File", "Configuration", "Translation", "Review"],
             current_step=1,
             on_step_change=self._on_step_change
         )
-        self.stepper.pack(fill="x", padx=SPACING["md"], pady=SPACING["xl"])
+        self.stepper.pack(side="left", expand=True, fill="y", padx=SPACING["md"])
         
-        # Background Logo or info at bottom of sidebar
+        # Main container
+        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_container.grid(row=1, column=0, sticky="nsew")
         
-        # === Content Area (Right) ===
+        self.main_container.grid_columnconfigure(0, weight=1) # Content Area spans full width
+        self.main_container.grid_rowconfigure(0, weight=1)
+        
+        # === Content Area ===
         self.content_area = ctk.CTkFrame(self.main_container, fg_color="transparent")
-        self.content_area.grid(row=0, column=1, sticky="nsew", padx=SPACING["lg"], pady=SPACING["md"])
+        # Removed sidebar column, so content is column 0
+        self.content_area.grid(row=0, column=0, sticky="nsew", padx=SPACING["lg"], pady=SPACING["md"])
         self.content_area.grid_columnconfigure(0, weight=1)
         self.content_area.grid_rowconfigure(0, weight=1)
         
