@@ -1710,12 +1710,12 @@ class LogPanel(ctk.CTkFrame):
     Displays logs from the core Logger.
     """
     
-    def __init__(self, parent, logger_instance, on_toggle=None, **kwargs):
+    def __init__(self, parent, logger_instance, on_toggle=None, expanded=False, **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
         
         self.logger = logger_instance
         self.on_toggle = on_toggle
-        self.is_expanded = False
+        self.is_expanded = expanded
         
         # Header (Always visible)
         self.header_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], height=40, corner_radius=RADIUS["md"])
@@ -1725,7 +1725,7 @@ class LogPanel(ctk.CTkFrame):
         # Toggle button
         self.toggle_btn = ctk.CTkButton(
             self.header_frame,
-            text="▶ Activity Log", # Right arrow when collapsed
+            text="▼ Activity Log" if self.is_expanded else "▶ Activity Log", # Right arrow when collapsed
             width=120,
             height=30,
             fg_color="transparent",
@@ -1744,10 +1744,13 @@ class LogPanel(ctk.CTkFrame):
             font=(FONTS["family"], FONTS["small_size"]),
             anchor="w"
         )
-        self.preview_label.pack(side="left", fill="x", expand=True, padx=SPACING["md"])
+        if not self.is_expanded:
+            self.preview_label.pack(side="left", fill="x", expand=True, padx=SPACING["md"])
         
         # Actions frame (visible when expanded)
         self.actions_frame = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        if self.is_expanded:
+            self.actions_frame.pack(side="right", padx=SPACING["sm"])
         
         # Clear button
         self.clear_btn = ctk.CTkButton(
@@ -1779,6 +1782,8 @@ class LogPanel(ctk.CTkFrame):
         
         # Content frame (Hidden by default)
         self.content_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
+        if self.is_expanded:
+            self.content_frame.pack(fill="both", expand=True)
         
         # Log text area
         # Log text area

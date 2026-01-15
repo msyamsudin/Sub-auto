@@ -156,7 +156,7 @@ class ProcessingView(ctk.CTkFrame):
         self.cancel_btn.pack(side="left")
         
         # Log Panel
-        self.log_panel = LogPanel(self, self.logger)
+        self.log_panel = LogPanel(self, self.logger, expanded=True)
         self.log_panel.grid(row=1, column=0, sticky="nsew", padx=SPACING["lg"], pady=(0, SPACING["lg"]))
     
     def _create_stat(self, parent, col: int, label: str, value: str):
