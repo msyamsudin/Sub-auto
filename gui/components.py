@@ -2954,7 +2954,8 @@ class HorizontalStepper(ctk.CTkFrame):
             self.on_step_change(step_number)
             
     def set_step(self, step_number: int):
-        if 1 <= step_number <= len(self.steps):
+        # Allow len + 1 to indicate "all steps completed"
+        if 1 <= step_number <= len(self.steps) + 1:
             self.current_step = step_number
             self._refresh()
             

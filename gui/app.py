@@ -545,6 +545,38 @@ class SubAutoApp(ctk.CTk):
         # Update title bar API status
         self.title_bar.set_api_status(api_ready, self.selected_model or "")
         
+        # Step 3: Translation (Processing)
+        # 1. Processing is active OR
+        # 2. We are waiting for review (merge_payload exists) OR
+        # 3. We are done (active_translator is None but we finished something?)
+        # Let's simplify: Step 3 is "active" if we are processing. 
+        # It is "complete" if we are in review or done.
+        
+        in_review = hasattr(self, 'merge_payload') and self.merge_payload is not None
+        
+        if self.is_processing or in_review:
+             completed_indices.append(3)
+        
+        # Step 4: Review
+        if in_review:
+             # If we are in review, Step 4 is active.
+             # If we finished review (merged), then Step 4 is complete.
+             # But if merged, merge_payload is cleared. 
+             # So we need another flag or check if we just finished.
+             # Actually, if we are "done" (summary showing), Steps 1-4 should be green?
+             pass 
+             
+        # For better UX, let's trust the flow.
+        # If we are showing summary, we are likely at the end.
+        
+        # Update completed steps
+        self.stepper.set_completed_steps(completed_indices)
+        
+        # Update start button
+        can_start = has_file and has_track and api_ready and not self.is_processing
+        if hasattr(self, 'start_btn'):
+            self.start_btn.configure(state="normal" if can_start else "disabled")
+        
         # Update cost estimate
         self._update_token_estimate()
     
@@ -882,7 +914,9 @@ class SubAutoApp(ctk.CTk):
         self.title_bar.title_label.configure(text=f"{self.APP_TITLE} - Processing")
         
         # Switch to Step 3
+        # Use set_step to update UI selection
         self.stepper.set_step(3)
+        self._update_step_states() # Update completion status
         self._show_step(3)
         
         # Set file info in processing view
@@ -1114,6 +1148,10 @@ class SubAutoApp(ctk.CTk):
         self.toast.success(f"Translation complete! {tokens.total_tokens:,} tokens used")
         
         # Store summary data for re-opening
+        
+        # Mark all steps complete
+        # 5 = len(steps) + 1, allowed by updated HorizontalStepper
+        self.stepper.set_step(5)
         self.last_summary_data = {
             "output_path": summary["output_path"],
             "lines_translated": summary["lines_translated"],
@@ -1149,10 +1187,13 @@ class SubAutoApp(ctk.CTk):
         self.after(2000, self._exit_processing_mode)
     
     def _close_summary(self):
-        """Close summary view."""
+        """Close summary view and reset app for next file."""
         if hasattr(self, 'summary_view') and self.summary_view:
             self.summary_view.destroy()
             self.summary_view = None
+            
+        # Auto-reset after closing summary (User Request)
+        self._reset_app()
     
     def _on_translation_error(self, error: str):
         """Handle translation error."""
@@ -1167,6 +1208,10 @@ class SubAutoApp(ctk.CTk):
         """Show the subtitle review editor."""
         self.is_processing = False
         self._exit_processing_mode()
+        
+        # Update Stepper to Step 4 (Review)
+        self.stepper.set_step(4)
+        self._update_step_states()
         
         # Store payload for later use
         self.merge_payload = payload
@@ -1356,6 +1401,9 @@ class SubAutoApp(ctk.CTk):
         self.is_processing = False
         self.is_paused = False
         self.should_cancel = False
+        # Clear payload to ensure Step 3/4 reset
+        if hasattr(self, 'merge_payload'):
+            self.merge_payload = None
         
         self._on_step_change(1) # Go back to step 1
         self._update_step_states()
