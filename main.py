@@ -6,8 +6,7 @@ A GUI application for automating the process of:
 2. Translating subtitles using Gemini AI
 3. Replacing/adding translated subtitles back to MKV
 
-Author: Sub-auto
-Version: 1.0.0
+Author: Syam
 """
 
 import sys

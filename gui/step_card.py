@@ -239,7 +239,7 @@ class CompactHeader(ctk.CTkFrame):
         self,
         master,
         title: str = "Sub-auto",
-        version: str = "1.2.0",
+        version: str = "",
         on_settings: Optional[Callable] = None,
         **kwargs
     ):

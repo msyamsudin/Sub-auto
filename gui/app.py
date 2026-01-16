@@ -33,12 +33,13 @@ from core.translator import Translator, get_api_manager, TokenUsage, validate_an
 from core.state_manager import get_state_manager, StateManager
 from core.logger import get_logger, Logger
 
+from core.version import __version__
 
 class SubAutoApp(ctk.CTk):
     """Main application window for Sub-auto."""
     
     APP_TITLE = "sub-auto"
-    APP_VERSION = "v2.0.0"
+    APP_VERSION = f"v{__version__}"
     WINDOW_SIZE = (1200, 800)  # Increased from (780, 520) to match editor size
     MIN_SIZE = (1200, 800)      # Increased from (700, 480)
     
