@@ -15,6 +15,7 @@ Alat otomatisasi untuk mengekstrak, menerjemahkan, dan menggabungkan subtitle pa
 - **Otomatisasi Penuh**:
   - Ekstrak subtitle dari MKV.
   - Terjemahkan baris demi baris.
+  - Mempertahankan gaya subtitle.
   - Gabung kembali (mux) ke file video asli tanpa re-encoding.
 - **Batch Processing**: Antrian dengan kemampuan Auto-Resume.
 - **Token Manager**: Estimasi biaya dan penggunaan token.
