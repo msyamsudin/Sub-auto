@@ -1,223 +1,24 @@
 """
 Translator for Sub-auto
 Handles translation of subtitle text using LLM providers.
-Includes API validation, model selection, token tracking, and robust retry logic.
 """
 
 from typing import List, Tuple, Optional, Callable, Dict, Any, TypeVar
 from dataclasses import dataclass, field
+import threading
 import time
 import re
-import random
-import socket
-import urllib.error
-import http.client
 
-from .config_manager import get_config
 from .subtitle_parser import SubtitleLine
 from .logger import get_logger
-from .logger import get_logger
-from .logger import get_logger
-from .llm_provider import LLMProvider, OpenRouterProvider, OllamaProvider, GroqProvider, ModelInfo, PolicyViolationError
+from .llm_provider import PolicyViolationError
+from .style_handler import StyleHandler
+from .retry_handler import NetworkRetryHandler, RetryConfig
+from .model_manager import ModelManager, get_api_manager, validate_and_save_api_key
 
 # Generic type for return values
 T = TypeVar('T')
 
-
-# Network-related exceptions to catch for retry
-NETWORK_ERRORS = (
-    socket.timeout,
-    socket.error,
-    urllib.error.URLError,
-    http.client.HTTPException,
-    ConnectionError,
-    TimeoutError,
-    OSError,
-)
-
-
-@dataclass
-class RetryConfig:
-    """Configuration for retry behavior."""
-    max_retries: int = 5                    # Maximum number of retry attempts
-    initial_delay: float = 1.0              # Initial delay in seconds
-    max_delay: float = 60.0                 # Maximum delay in seconds
-    exponential_base: float = 2.0           # Base for exponential backoff
-    jitter: bool = True                     # Add random jitter to delays
-    retry_on_rate_limit: bool = True        # Retry on rate limit errors
-    retry_on_server_error: bool = True      # Retry on 5xx server errors
-
-
-class NetworkRetryHandler:
-    """
-    Handles network failures with robust retry logic.
-    Implements exponential backoff with jitter.
-    """
-    
-    def __init__(self, config: Optional[RetryConfig] = None):
-        self.config = config or RetryConfig()
-        self.consecutive_failures = 0
-        self.last_error: Optional[str] = None
-        self.total_retries = 0
-        self.logger = get_logger()
-        
-    def reset(self):
-        """Reset failure counters."""
-        self.consecutive_failures = 0
-        self.last_error = None
-    
-    def calculate_delay(self, attempt: int, error: Optional[Exception] = None) -> float:
-        """
-        Calculate delay for the next retry with exponential backoff.
-        Parses API-suggested retry delays from error messages when available.
-        
-        Args:
-            attempt: Current attempt number (0-based)
-            error: Optional exception that may contain retry-after information
-            
-        Returns:
-            Delay in seconds
-        """
-        # Check if error contains specific retry time (e.g., Groq's "Please try again in X.XXs")
-        if error:
-            error_str = str(error)
-            # Match patterns like "try again in 1.57s" or "retry after 2.5s"
-            match = re.search(r'(?:try again in|retry after)\s+([\d.]+)\s*s', error_str, re.IGNORECASE)
-            if match:
-                suggested_delay = float(match.group(1))
-                # Add small buffer (10%) to be safe
-                suggested_delay = suggested_delay * 1.1
-                self.logger.info(f"Using API-suggested retry delay: {suggested_delay:.2f}s")
-                return max(suggested_delay, 0.1)
-        
-        # Fallback to exponential backoff
-        delay = self.config.initial_delay * (self.config.exponential_base ** attempt)
-        delay = min(delay, self.config.max_delay)
-        
-        if self.config.jitter:
-            # Add ±25% random jitter
-            jitter_range = delay * 0.25
-            delay = delay + random.uniform(-jitter_range, jitter_range)
-        
-        return max(0.1, delay)  # Minimum 100ms delay
-    
-    def is_retryable_error(self, error: Exception) -> bool:
-        """
-        Check if an error is retryable.
-        
-        Args:
-            error: The exception that occurred
-            
-        Returns:
-            True if the error should trigger a retry
-        """
-        error_str = str(error).lower()
-        
-        # Network-related errors
-        if isinstance(error, NETWORK_ERRORS):
-            return True
-        
-        # Check error message for common network issues
-        network_keywords = [
-            "connection", "timeout", "timed out", "network",
-            "unreachable", "reset", "refused", "broken pipe",
-            "eof", "ssl", "certificate", "handshake",
-            "dns", "resolve", "socket", "connect", "incomplete"
-        ]
-        if any(kw in error_str for kw in network_keywords):
-            return True
-        
-        # Rate limiting errors
-        if self.config.retry_on_rate_limit:
-            rate_limit_keywords = ["rate", "limit", "quota", "429", "too many"]
-            if any(kw in error_str for kw in rate_limit_keywords):
-                return True
-        
-        # Server errors (5xx)
-        if self.config.retry_on_server_error:
-            server_error_keywords = ["500", "502", "503", "504", "server error", "internal error"]
-            if any(kw in error_str for kw in server_error_keywords):
-                return True
-        
-        # Google API specific errors
-        google_retryable = [
-            "resource_exhausted", "unavailable", "deadline_exceeded",
-            "internal", "aborted"
-        ]
-        if any(kw in error_str for kw in google_retryable):
-            return True
-        
-        return False
-    
-    def execute_with_retry(
-        self, 
-        func: Callable[[], T], 
-        on_retry: Optional[Callable[[int, float, str], None]] = None,
-        stop_check: Optional[Callable[[], bool]] = None
-    ) -> T:
-        """
-        Execute a function with retry logic.
-        
-        Args:
-            func: Function to execute
-            on_retry: Callback(attempt, delay, error_msg)
-            
-        Returns:
-            Result of the function
-            
-        Raises:
-            Exception: If max retries exceeded
-        """
-        self.retry_count = 0
-        last_error = None
-        
-        for attempt in range(self.config.max_retries + 1):
-            try:
-                if stop_check and stop_check():
-                     raise KeyboardInterrupt("Stopped by user")
-                
-                if attempt > 0:
-                    self.logger.info(f"Retry attempt {attempt}/{self.config.max_retries}...")
-                return func()
-            except Exception as e:
-                last_error = e
-                if not self.is_retryable_error(e) or attempt == self.config.max_retries:
-                    self.logger.error(f"Non-retriable error or max retries reached: {e}")
-                    raise e
-                
-                # Calculate delay (pass error for smart retry-after parsing)
-                delay = self.calculate_delay(attempt, e)
-                error_msg = str(e)
-                
-                self.logger.warning(f"Error: {error_msg}. Retrying in {delay:.2f}s...")
-                
-                # Call callbacks
-                if on_retry:
-                    on_retry(attempt + 1, delay, str(e))
-                
-                # Sleep with interrupt check
-                sleep_step = 0.1
-                slept = 0.0
-                while slept < delay:
-                    if stop_check and stop_check():
-                        raise KeyboardInterrupt("Stopped by user")
-                    time.sleep(min(sleep_step, delay - slept))
-                    slept += sleep_step
-        
-        # All retries exhausted
-        if last_error:
-            raise last_error
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Get current retry handler status."""
-        return {
-            "consecutive_failures": self.consecutive_failures,
-            "total_retries": self.total_retries,
-            "last_error": self.last_error
-        }
-
-
-import threading
 
 @dataclass
 class TokenUsage:
@@ -252,160 +53,6 @@ class TranslationResult:
     translated_lines: List[Tuple[int, str]]  # (index, translated_text)
     error_message: str = ""
     tokens_used: TokenUsage = field(default_factory=TokenUsage)
-
-
-@dataclass
-class APIValidationResult:
-    """Result of API key validation."""
-    is_valid: bool
-    message: str
-    available_models: List[ModelInfo] = field(default_factory=list)
-
-
-class ModelManager:
-    """Manages LLM providers and model selection."""
-    
-    def __init__(self):
-        self.provider_name: str = "openrouter"
-        self.provider: Optional[LLMProvider] = None
-        self.is_configured = False
-        self.available_models: List[ModelInfo] = []
-        self.selected_model: Optional[str] = None
-        self.config = get_config()
-    
-    def configure(self, provider_name: Optional[str] = None):
-        """Configure the active provider."""
-        self.provider_name = provider_name or self.config.provider
-        
-        if self.provider_name == "openrouter":
-            self.provider = OpenRouterProvider(self.config.openrouter_api_key)
-        elif self.provider_name == "ollama":
-            self.provider = OllamaProvider(
-                base_url=self.config.ollama_base_url
-            )
-        elif self.provider_name == "groq":
-            self.provider = GroqProvider(self.config.groq_api_key)
-        else:
-            raise ValueError(f"Unknown provider: {self.provider_name}")
-
-    def validate_connection(self) -> APIValidationResult:
-        """
-        Validate provider connection and retrieve available models.
-        
-        Returns:
-            APIValidationResult with validation status and available models
-        """
-        self.configure()  # Re-configure to ensure latest settings
-        
-        if not self.provider:
-            return APIValidationResult(False, "Provider not initialized")
-            
-        is_valid, message = self.provider.validate_connection()
-        
-        if not is_valid:
-            return APIValidationResult(False, message)
-            
-        try:
-            models = self.provider.list_models()
-            
-            if not models:
-                return APIValidationResult(
-                    is_valid=False,
-                    message="Connection valid but no models found"
-                )
-            
-            # Store state
-            self.is_configured = True
-            self.available_models = models
-            
-            # Auto-select model
-            self._auto_select_model()
-            
-            return APIValidationResult(
-                is_valid=True,
-                message=f"Connected! Found {len(models)} models.",
-                available_models=models
-            )
-            
-        except Exception as e:
-            return APIValidationResult(False, f"Validation error: {str(e)}")
-    
-    def _auto_select_model(self):
-        """Auto-select the best default model or use user's saved preference."""
-        # First, check if user has a saved model preference in config
-        if self.provider_name == "openrouter":
-            saved_model = self.config.openrouter_model
-            if saved_model:
-                # Try to find and select the saved model
-                for model in self.available_models:
-                    if model.name == saved_model:
-                        self.selected_model = model.name
-                        return
-            
-            # Fallback to preferred free models
-            preferred_models = [
-                "google/gemini-2.0-flash-exp:free",
-                "meta-llama/llama-3-8b-instruct:free",
-                "huggingfaceh4/zephyr-7b-beta:free",
-                "mistralai/mistral-7b-instruct:free",
-                "openai/gpt-3.5-turbo"
-            ]
-        elif self.provider_name == "ollama":
-            preferred_models = [
-                self.config.ollama_model,
-                "llama3",
-                "mistral",
-                "gemma"
-            ]
-        elif self.provider_name == "groq":
-            preferred_models = [
-                self.config.groq_model,
-                "llama3-70b-8192",
-                "llama3-8b-8192"
-            ]
-        else:
-            preferred_models = []
-        
-        for preferred in preferred_models:
-            for model in self.available_models:
-                if preferred.lower() in model.name.lower():
-                    self.selected_model = model.name
-                    return
-        
-        # Fallback
-        if self.available_models:
-            self.selected_model = self.available_models[0].name
-    
-    def select_model(self, model_name: str) -> bool:
-        """Select a model by name."""
-        # Try exact match
-        for model in self.available_models:
-            if model.name == model_name or model.short_name == model_name:
-                self.selected_model = model.name
-                return True
-        
-        # Try partial match (case-insensitive)
-        for model in self.available_models:
-            if model_name.lower() in model.name.lower():
-                self.selected_model = model.name
-                return True
-                
-        return False
-    
-    def get_model_display_names(self) -> List[str]:
-        """Get list of model display names."""
-        return [model.short_name for model in self.available_models]
-    
-    def get_selected_model_info(self) -> Optional[ModelInfo]:
-        """Get the ModelInfo for the currently selected model."""
-        if not self.selected_model:
-            return None
-        
-        for model in self.available_models:
-            if model.name == self.selected_model or model.short_name == self.selected_model:
-                return model
-        
-        return None
 
 
 class Translator:
@@ -452,6 +99,7 @@ OUTPUT:
         
         self.token_usage = TokenUsage()
         self.retry_handler = NetworkRetryHandler(retry_config)
+        self.style_handler = StyleHandler()  # Initialize StyleHandler
         self._on_retry_callback: Optional[Callable[[int, float, str], None]] = None
         self.logger = get_logger()
         self.should_stop = False
@@ -519,18 +167,25 @@ OUTPUT:
         # Build context string
         context = ""
         if context_lines:
-            context = "\n".join([
-                f"[PREV] {line.clean_text()}" 
-                for line in context_lines[-3:]  # Last 3 lines for context
-            ])
+            context_processed = []
+            for line in context_lines[-3:]:
+                 # Use simple clean for context to avoid confusion
+                text, _ = self.style_handler.prepare_for_translation(line.text, line.style)
+                context_processed.append(f"[PREV] {text}")
+            context = "\n".join(context_processed)
         else:
             context = "(No previous context)"
         
-        # Build lines to translate
-        lines_text = "\n".join([
-            f"[{line.index}] {line.text}"
-            for line in lines
-        ])
+        # Prepare lines and store metadata
+        lines_text_parts = []
+        style_metadata = {}
+        
+        for line in lines:
+            prepared_text, metadata = self.style_handler.prepare_for_translation(line.text, line.style)
+            style_metadata[line.index] = metadata
+            lines_text_parts.append(f"[{line.index}] {prepared_text}")
+            
+        lines_text = "\n".join(lines_text_parts)
         
         # Build prompt
         prompt = self.TRANSLATION_PROMPT.format(
@@ -598,19 +253,28 @@ OUTPUT:
             
             batch_elapsed = time.time() - batch_start_time
             
-            if len(translated) == len(lines):
-                self.logger.info(f"✅ Batch complete: {len(translated)} lines translated in {batch_elapsed:.2f}s")
+            # Restore styles
+            final_translated = []
+            for idx, text in translated:
+                if idx in style_metadata:
+                    restored_text = self.style_handler.restore_styles(text, style_metadata[idx])
+                    final_translated.append((idx, restored_text))
+                else:
+                    final_translated.append((idx, text))
+
+            if len(final_translated) == len(lines):
+                self.logger.info(f"✅ Batch complete: {len(final_translated)} lines translated in {batch_elapsed:.2f}s")
                 return TranslationResult(
                     success=True,
-                    translated_lines=translated,
+                    translated_lines=final_translated,
                     tokens_used=batch_tokens
                 )
             else:
-                self.logger.warning(f"⚠️ Partial batch: got {len(translated)}/{len(lines)} lines in {batch_elapsed:.2f}s")
+                self.logger.warning(f"⚠️ Partial batch: got {len(final_translated)}/{len(lines)} lines in {batch_elapsed:.2f}s")
                 return TranslationResult(
                     success=True,
-                    translated_lines=translated,
-                    error_message=f"Partial: expected {len(lines)}, got {len(translated)}",
+                    translated_lines=final_translated,
+                    error_message=f"Partial: expected {len(lines)}, got {len(final_translated)}",
                 )
                     
         except PolicyViolationError as e:
@@ -646,11 +310,6 @@ OUTPUT:
                     fallback_start = time.time()
                     self.logger.info(f"🌐 Calling API (Fallback): {fallback_model}")
                     
-                    # We bypass retry handler for fallback to avoid infinite loops if fallback also fails, 
-                    # OR we could wrap it. For now, simple direct call to ensure we don't spam.
-                    # But using retry handler for network issues on fallback is good.
-                    # Let's simple call first.
-                    
                     response_text = self.model_manager.provider.generate_content(
                         fallback_model,
                         prompt
@@ -674,10 +333,19 @@ OUTPUT:
                     # Parse response
                     translated = self._parse_response(response_text, lines)
                      
+                    # Restore styles for fallback too
+                    final_translated = []
+                    for idx, text in translated:
+                        if idx in style_metadata:
+                            restored_text = self.style_handler.restore_styles(text, style_metadata[idx])
+                            final_translated.append((idx, restored_text))
+                        else:
+                            final_translated.append((idx, text))
+
                     batch_elapsed = time.time() - batch_start_time
                     return TranslationResult(
                         success=True,
-                        translated_lines=translated,
+                        translated_lines=final_translated,
                         error_message="Success (Fallback used)",
                         tokens_used=batch_tokens
                     )
@@ -804,8 +472,6 @@ OUTPUT:
             
             self.logger.info(f"📦 Batch {batch_idx + 1}/{total_batches}: processing {len(batch)} lines...")
             
-            current_count = len(completed_indices) + len(batch) # Approximation for UI
-            
             if progress_callback:
                 progress_callback(
                     len(completed_indices), 
@@ -843,9 +509,6 @@ OUTPUT:
                 # Check for partiality in a "successful" batch
                 if len(result.translated_lines) < len(batch):
                      self.logger.warning(f"⚠️ Batch {batch_idx+1} partial: {len(result.translated_lines)}/{len(batch)}")
-                     # In sequential mode, we could try to retry missing lines immediately, 
-                     # but translate_batch already retries internally. 
-                     # We'll just accept what we got or log it.
                      pass
 
             else:
@@ -858,7 +521,6 @@ OUTPUT:
                         all_translations.append((line.index, line.text))
             
             # Delay between batches to avoid rate limits
-            # Increased from 0.5s to 1.5s for better rate limit handling
             time_module.sleep(1.5)
         
         all_translations.sort(key=lambda x: x[0])
@@ -878,25 +540,3 @@ OUTPUT:
         self.logger.info("=" * 50)
         
         return all_translations, errors, self.token_usage
-
-
-# Global API manager instance
-_model_manager: Optional[ModelManager] = None
-
-
-def get_api_manager() -> ModelManager:
-    """Get the global ModelManager instance."""
-    global _model_manager
-    if _model_manager is None:
-        _model_manager = ModelManager()
-    return _model_manager
-
-
-def validate_and_save_api_key(api_key: str) -> APIValidationResult:
-    """Validate API key (legacy bridge)."""
-    # This is slightly broken in new design as validation depends on provider
-    # But usually this is called when user enters OpenRouter key
-    manager = get_api_manager()
-    manager.config.openrouter_api_key = api_key
-    manager.config.provider = "openrouter"
-    return manager.validate_connection()

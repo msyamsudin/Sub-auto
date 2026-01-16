@@ -152,17 +152,8 @@ class SubtitleParser:
         for event in self.subs:
             if event.type == "Dialogue":
                 if dialogue_index in trans_map:
-                    # Preserve any leading formatting tags
-                    original_text = event.text
-                    translated = trans_map[dialogue_index]
-                    
-                    # Try to preserve ASS formatting tags at the start
-                    import re
-                    leading_tags = re.match(r'^(\{\\[^}]+\})+', original_text)
-                    if leading_tags:
-                        event.text = leading_tags.group(0) + translated
-                    else:
-                        event.text = translated
+                    # Translated text already has styles restored by Translator
+                    event.text = trans_map[dialogue_index]
                 
                 dialogue_index += 1
     
