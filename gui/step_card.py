@@ -301,9 +301,11 @@ class CompactHeader(ctk.CTkFrame):
         )
         self.api_status.grid(row=0, column=1, sticky="e", padx=SPACING["md"])
     
-    def set_api_status(self, is_valid: bool, model_name: str = ""):
+    def set_api_status(self, is_valid: bool, model_name: str = "", connecting: bool = False):
         """Update API status display."""
-        if is_valid:
+        if connecting:
+             self.api_status.configure(text="⟳ Fetching models...", text_color=COLORS["text_secondary"])
+        elif is_valid:
             text = f"✓ {model_name}" if model_name else "✓ API Ready"
             self.api_status.configure(text=text, text_color=COLORS["success"])
         else:

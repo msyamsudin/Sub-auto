@@ -44,14 +44,17 @@ class ModelManager:
         else:
             raise ValueError(f"Unknown provider: {self.provider_name}")
 
-    def validate_connection(self) -> APIValidationResult:
+    def validate_connection(self, provider_name: Optional[str] = None) -> APIValidationResult:
         """
         Validate provider connection and retrieve available models.
         
+        Args:
+            provider_name: Optional provider to validate. If None, uses current config.
+
         Returns:
             APIValidationResult with validation status and available models
         """
-        self.configure()  # Re-configure to ensure latest settings
+        self.configure(provider_name=provider_name)  # Re-configure to ensure latest settings
         
         if not self.provider:
             return APIValidationResult(False, "Provider not initialized")

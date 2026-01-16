@@ -85,6 +85,7 @@ class SubAutoApp(ctk.CTk):
         self.remove_old_subs = True
         self._pending_resume = False
         self.active_translator: Optional[Translator] = None
+        self.is_validating = False
         
         # Initialize MKV handler
         self._init_mkv_handler()
@@ -496,6 +497,13 @@ class SubAutoApp(ctk.CTk):
     
     def _update_step_states(self):
         """Update UI states based on current progress."""
+        # Sync with global ModelManager state (e.g. if validated in settings)
+        manager = get_api_manager()
+        if manager.is_configured and not self.api_validated:
+            self.api_validated = True
+            if not self.selected_model:
+                self.selected_model = manager.selected_model
+
         has_file = self.current_file is not None
         has_track = self.selected_track_id is not None
         api_ready = self.api_validated
@@ -544,7 +552,8 @@ class SubAutoApp(ctk.CTk):
             self.start_btn.configure(state="normal" if can_start else "disabled")
         
         # Update title bar API status
-        self.title_bar.set_api_status(api_ready, self.selected_model or "")
+        if not self.is_validating:
+            self.title_bar.set_api_status(api_ready, self.selected_model or "")
         
         # Step 3: Translation (Processing)
         # 1. Processing is active OR
@@ -714,18 +723,30 @@ class SubAutoApp(ctk.CTk):
         self.remove_old_subs = settings.get("remove_old_subs", True)
         self._init_mkv_handler()  # Reinitialize with new path
         
-        # If API key changed, re-validate
+        # If AI settings changed, handle validation sync
         if settings.get("ai_settings_changed", False):
-            self.api_validated = False
-            self._update_step_states()
-            
-            # Auto-connect if OLLAMA or OpenRouter with key
-            if self.config.provider == "ollama" or \
-               (self.config.provider == "openrouter" and self.config.openrouter_api_key) or \
-               (self.config.provider == "groq" and self.config.groq_api_key):
-                self._validate_api()
+            manager = get_api_manager()
+            if manager.is_configured:
+                # Already successfully validated in SettingsDialog
+                self.api_validated = True
+                self.selected_model = manager.selected_model
+                self._update_step_states()
             else:
-                self.toast.info("AI settings updated. Please reconnect.")
+                # Need to re-validate or was never validated
+                self.api_validated = False
+                
+                # Check if we should auto-connect
+                if self.config.provider == "ollama" or \
+                   (self.config.provider == "openrouter" and self.config.openrouter_api_key) or \
+                   (self.config.provider == "groq" and self.config.groq_api_key):
+                    # Show connecting status first
+                    self.is_validating = True
+                    self.title_bar.set_api_status(False, connecting=True)
+                    self._update_step_states()
+                    self._validate_api()
+                else:
+                    self._update_step_states()
+                    self.toast.info("AI settings updated. Please reconnect.")
         else:
             self.toast.success("Settings saved")
     
@@ -818,6 +839,7 @@ class SubAutoApp(ctk.CTk):
         self.model_status.configure(text="Connecting & fetching models...", text_color=COLORS["text_secondary"])
         self.model_dropdown.configure(state="disabled")
         self.title_bar.set_api_status(False, connecting=True)
+        self.is_validating = True
         
         # Validate in background
         thread = threading.Thread(target=self._do_validate, daemon=True)
@@ -835,6 +857,7 @@ class SubAutoApp(ctk.CTk):
     
     def _on_validate_result(self, result):
         """Handle validation result."""
+        self.is_validating = False
         self.validate_btn.configure(state="normal", text="Connect")
         
         if result.is_valid:
@@ -847,8 +870,6 @@ class SubAutoApp(ctk.CTk):
                 
                 # Try to select configured model if available
                 configured_model = None
-                if self.config.provider == "ollama":
-                    configured_model = self.config.ollama_model
                 if self.config.provider == "ollama":
                     configured_model = self.config.ollama_model
                 elif self.config.provider == "openrouter":
@@ -895,10 +916,13 @@ class SubAutoApp(ctk.CTk):
     
     def _on_validate_error(self, error: str):
         """Handle validation error."""
+        self.is_validating = False
+        self.api_validated = False
         self.validate_btn.configure(state="normal", text="Connect")
         self.model_dropdown.configure(state="disabled")
         self.model_status.configure(text="Connection failed", text_color=COLORS["error"])
         self.toast.error(f"Validation failed: {error}")
+        self._update_step_states()
     
     def _load_saved_api_key(self):
         """Load saved configuration and auto-validate."""

@@ -12,7 +12,6 @@ from .components import CustomTitleBar
 
 
 import threading
-from core.llm_provider import OllamaProvider, GroqProvider
 from core.translator import get_api_manager
 
 class SettingsDialog(ctk.CTkFrame):
@@ -642,11 +641,17 @@ class SettingsDialog(ctk.CTkFrame):
     def _do_refresh_ollama(self, url, silent):
         """Perform OLLAMA refresh in background."""
         try:
-            provider = OllamaProvider(base_url=url)
-            # Optimized: Just call list_models, it will raise invalid URL/Connection error if it fails
-            models = provider.list_models()
-            model_names = [m.name for m in models]
-            self.after(0, lambda: self._on_ollama_refresh_result(True, model_names, silent))
+            manager = get_api_manager()
+            # Update the URL in the shared config object for validation
+            manager.config.ollama_base_url = url
+            # Pass provider name to validate without permanently overriding config yet
+            result = manager.validate_connection(provider_name="ollama")
+            
+            if result.is_valid:
+                model_names = [m.name for m in result.available_models]
+                self.after(0, lambda: self._on_ollama_refresh_result(True, model_names, silent))
+            else:
+                self.after(0, lambda: self._on_ollama_refresh_result(False, result.message, silent))
         except Exception as e:
             error_msg = str(e)
             self.after(0, lambda err=error_msg: self._on_ollama_refresh_result(False, err, silent))
@@ -867,10 +872,16 @@ class SettingsDialog(ctk.CTkFrame):
     def _do_validate_groq(self, api_key):
         """Background validation for Groq."""
         try:
-            provider = GroqProvider(api_key=api_key)
-            models = provider.list_models()
-            model_names = [m.name for m in models]
-            self.after(0, lambda: self._on_groq_validate_result(True, model_names))
+            manager = get_api_manager()
+            # Temporarily update the key in the shared config object for validation
+            manager.config.groq_api_key = api_key
+            result = manager.validate_connection(provider_name="groq")
+            
+            if result.is_valid:
+                model_names = [m.name for m in result.available_models]
+                self.after(0, lambda: self._on_groq_validate_result(True, model_names))
+            else:
+                self.after(0, lambda: self._on_groq_validate_result(False, result.message))
         except Exception as e:
             self.after(0, lambda: self._on_groq_validate_result(False, str(e)))
 
