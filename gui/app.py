@@ -1058,8 +1058,11 @@ class SubAutoApp(ctk.CTk):
             # Sanitize model name for filename
             sanitized_model = model_used.replace("/", "_").replace(":", "_").replace("\\", "_")
             
-            translated_sub_path = Path(output_dir) / f"{input_path.stem}_{sanitized_model}_translated.srt"
-            parser.save(str(translated_sub_path))
+            # Use original extension from extracted file to preserve metadata support (e.g. .ass)
+            ext = Path(extracted_path).suffix
+            initial_path = Path(output_dir) / f"{input_path.stem}_{sanitized_model}_translated{ext}"
+            # Capture the actual saved path (parser might correct extension from .srt to .ass)
+            translated_sub_path = parser.save(str(initial_path))
             
             # PAUSE HERE - Show review editor instead of immediately merging
             # Prepare payload for merge step

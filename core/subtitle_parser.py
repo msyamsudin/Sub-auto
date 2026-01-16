@@ -17,6 +17,7 @@ class SubtitleLine:
     end_ms: int
     text: str
     style: str = "Default"
+    actor: str = ""
     
     @property
     def start_time(self) -> str:
@@ -45,7 +46,7 @@ class SubtitleLine:
     def clean_text(self) -> str:
         """Get text with formatting tags removed (for translation)."""
         import re
-        # Remove ASS styling tags like {\i1}, {\b1}, etc.
+        # Remove ASS styling tags like {\\i1}, {\\b1}, etc.
         text = re.sub(r'\{\\[^}]+\}', '', self.text)
         # Remove HTML-like tags
         text = re.sub(r'<[^>]+>', '', text)
@@ -85,6 +86,8 @@ class SubtitleParser:
         # Load with pysubs2
         try:
             self.subs = pysubs2.load(str(self.file_path))
+            # Update original_format based on actual content detection
+            self.original_format = self.subs.format
         except Exception as e:
             raise RuntimeError(f"Failed to parse subtitle file: {e}")
         
@@ -103,7 +106,8 @@ class SubtitleParser:
                     start_ms=event.start,
                     end_ms=event.end,
                     text=event.text,
-                    style=event.style
+                    style=event.style,
+                    actor=event.name
                 )
                 lines.append(line)
         
@@ -147,16 +151,12 @@ class SubtitleParser:
         # Create a mapping of index to translated text
         trans_map = {idx: text for idx, text in translations}
         
-        # Apply translations
-        dialogue_index = 0
-        for event in self.subs:
-            if event.type == "Dialogue":
-                if dialogue_index in trans_map:
-                    # Translated text already has styles restored by Translator
-                    event.text = trans_map[dialogue_index]
-                
-                dialogue_index += 1
-    
+        # Apply translations using absolute indices
+        for i, event in enumerate(self.subs):
+            # Only update if it's a Dialogue event AND we have a translation for this index
+            if event.type == "Dialogue" and i in trans_map:
+                # Translated text already has styles restored by Translator
+                event.text = trans_map[i]    
     def save(
         self, 
         output_path: str, 

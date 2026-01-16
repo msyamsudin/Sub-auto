@@ -20,10 +20,9 @@ class StyleInfo:
 class StyleHandler:
     """Handles ASS/SSA style tag preservation during translation."""
     
-    # Styles that typically shouldn't be translated (signs, songs, etc.)
+    # Styles that typically shouldn't be translated (songs, karaoke)
     SKIP_TRANSLATION_STYLES = {
-        'sign', 'signs', 'op', 'ed', 'opening', 'ending', 
-        'title', 'card', 'note', 'notes', 'karaoke'
+        'op', 'ed', 'opening', 'ending', 'karaoke'
     }
     
     # Tags that indicate complex positioning (usually signs)
@@ -47,10 +46,9 @@ class StyleHandler:
         if style_name.lower() in self.SKIP_TRANSLATION_STYLES:
             return True
         
-        # Check if text has complex positioning (likely a sign)
-        for tag_pattern in self.POSITIONING_TAGS:
-            if re.search(tag_pattern, text):
-                return True
+        # We no longer skip lines with positioning tags automatically,
+        # as this prevents valid dialogue with positioning from being translated.
+        # Complex signs will simply be translated with their tags preserved as prefix.
                 
         return False
     
