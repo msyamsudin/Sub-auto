@@ -604,10 +604,12 @@ class TrackListItem(ctk.CTkFrame):
     def select(self):
         """Select this track."""
         self.is_selected.set(True)
+        self._on_checkbox_change()
     
     def deselect(self):
         """Deselect this track."""
         self.is_selected.set(False)
+        self._on_checkbox_change()
 
 
 class SegmentedProgressBar(ctk.CTkFrame):
@@ -907,14 +909,9 @@ class ProgressPanel(ctk.CTkFrame):
     def set_success(self, message: str = "Complete!"):
         """Show success state."""
         self.progress_bar.set(1)
-    def set_success(self, message: str = "Complete!"):
-        """Show success state."""
-        self.progress_bar.set(1)
         self.progress_bar.configure(progress_color=COLORS["success"])
         self.status_label.configure(text=message, text_color=COLORS["success"])
     
-    def set_error(self, message: str = "Error occurred"):
-        """Show error state."""
     def set_error(self, message: str = "Error occurred"):
         """Show error state."""
         self.progress_bar.configure(progress_color=COLORS["error"])

@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
 from .config_manager import get_config
+from .logger import get_logger
 
 
 @dataclass
@@ -214,21 +215,32 @@ class MKVHandler:
         
         # Run mkvextract
         try:
+            cmd = [
+                str(self.mkvextract_path),
+                "tracks",
+                str(mkv_path),
+                f"{track_id}:{output_path}"
+            ]
+            
+            logger = get_logger()
+            logger.info(f"Running mkvextract: {subprocess.list2cmdline(cmd)}")
+            
             result = subprocess.run(
-                [
-                    str(self.mkvextract_path),
-                    "tracks",
-                    str(mkv_path),
-                    f"{track_id}:{output_path}"
-                ],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=120,
-                encoding='utf-8'
+                encoding='utf-8',
+                errors='replace'
             )
             
-            if result.returncode != 0:
-                raise RuntimeError(f"mkvextract error: {result.stderr}")
+            # mkvextract returns 0 for success, 1 for warnings
+            if result.returncode not in [0, 1]:
+                error_msg = result.stderr or result.stdout or "Unknown error"
+                raise RuntimeError(f"mkvextract error (code {result.returncode}): {error_msg}")
+            
+            if result.returncode == 1:
+                logger.warning(f"mkvextract finished with warnings: {result.stderr}")
             
             if not output_path.exists():
                 raise RuntimeError("Extraction completed but output file not found")
@@ -299,17 +311,25 @@ class MKVHandler:
         
         # Run mkvmerge
         try:
+            logger = get_logger()
+            logger.info(f"Running mkvmerge: {subprocess.list2cmdline(cmd)}")
+            
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5 minutes timeout for large files
-                encoding='utf-8'
+                encoding='utf-8',
+                errors='replace'
             )
             
             # mkvmerge returns 0 for success, 1 for warnings, 2 for errors
             if result.returncode == 2:
-                raise RuntimeError(f"mkvmerge error: {result.stderr}")
+                error_msg = result.stderr or result.stdout or "Unknown error"
+                raise RuntimeError(f"mkvmerge error (code {result.returncode}): {error_msg}")
+            
+            if result.returncode == 1:
+                logger.warning(f"mkvmerge finished with warnings: {result.stderr}")
             
             if not output_path.exists():
                 raise RuntimeError("Merge completed but output file not found")

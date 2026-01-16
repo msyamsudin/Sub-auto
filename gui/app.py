@@ -86,6 +86,8 @@ class SubAutoApp(ctk.CTk):
         self._pending_resume = False
         self.active_translator: Optional[Translator] = None
         self.is_validating = False
+        self._pending_estimates = set()
+        self._subtitle_cache = {}
         
         # Initialize MKV handler
         self._init_mkv_handler()
@@ -596,7 +598,8 @@ class SubAutoApp(ctk.CTk):
         if (self.config.provider not in ["openrouter", "groq"] or 
             not self.current_file or 
             self.selected_track_id is None or
-            not self.api_validated):
+            not self.api_validated or
+            self.is_processing): # Don't estimate while already processing
             if hasattr(self, 'cost_estimate_label'):
                 self.cost_estimate_label.configure(text="")
             return
@@ -611,14 +614,15 @@ class SubAutoApp(ctk.CTk):
                     self.cost_estimate_label.configure(text="")
                 return
             
-            # Check cache - avoid re-extracting subtitle
+            # Check cache and pending
             cache_key = f"{self.current_file}:{self.selected_track_id}"
-            if not hasattr(self, '_subtitle_cache'):
-                self._subtitle_cache = {}
-            
             if cache_key in self._subtitle_cache:
                 total_chars, line_count = self._subtitle_cache[cache_key]
+            elif cache_key in self._pending_estimates:
+                return
             else:
+                self._pending_estimates.add(cache_key)
+                
                 # Show loading indicator
                 if hasattr(self, 'cost_estimate_label'):
                     self.cost_estimate_label.configure(text="💰 Calculating...")
@@ -626,9 +630,26 @@ class SubAutoApp(ctk.CTk):
                 # Run extraction in background
                 def do_estimate():
                     try:
+                        # Use a unique temporary path for estimation to avoid collisions/locks
+                        import tempfile
+                        suffix = ".srt.tmp"
+                        
+                        # Try to get better suffix
+                        try:
+                            tracks = self.mkv_handler.get_subtitle_tracks(self.current_file)
+                            track = next((t for t in tracks if t.track_id == self.selected_track_id), None)
+                            if track:
+                                suffix = track.file_extension + ".tmp"
+                        except:
+                            pass
+                            
+                        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                            temp_output = tmp.name
+                        
                         extracted_path = self.mkv_handler.extract_subtitle(
                             self.current_file,
-                            self.selected_track_id
+                            self.selected_track_id,
+                            output_path=temp_output
                         )
                         
                         parser = SubtitleParser()
@@ -650,6 +671,9 @@ class SubAutoApp(ctk.CTk):
                         self.after(0, lambda: self._display_token_estimate(model_info, total_chars, line_count))
                     except Exception as e:
                         self.after(0, lambda: self.cost_estimate_label.configure(text=""))
+                    finally:
+                        if cache_key in self._pending_estimates:
+                            self._pending_estimates.remove(cache_key)
                 
                 import threading
                 thread = threading.Thread(target=do_estimate, daemon=True)
@@ -804,9 +828,8 @@ class SubAutoApp(ctk.CTk):
             
             # Auto-select first track
             if self.track_items:
+                # Select() will trigger _on_track_select which calls _update_step_states()
                 self.track_items[0].select()
-                self.selected_track_id = self.subtitle_tracks[0].track_id
-                self._update_step_states()
                 
         except Exception as e:
             self.no_tracks_label.configure(
@@ -819,13 +842,20 @@ class SubAutoApp(ctk.CTk):
     def _on_track_select(self, track_id: int, is_selected: bool):
         """Handle track selection."""
         if is_selected:
+            if self.selected_track_id == track_id:
+                return
+            
+            # Deselect others (this will trigger callbacks, hence the guard above is important)
             for item in self.track_items:
                 if item.track_id != track_id:
                     item.deselect()
+            
             self.selected_track_id = track_id
         else:
-            if self.selected_track_id == track_id:
-                self.selected_track_id = None
+            if self.selected_track_id != track_id:
+                return
+            self.selected_track_id = None
+            
         self._update_step_states()
     
     def _on_model_change(self, model: str):
@@ -980,6 +1010,7 @@ class SubAutoApp(ctk.CTk):
             return
         
         self.is_processing = True
+        self._pending_estimates.clear() # Cancel background work
         self._enter_processing_mode()
         
         # Start in background
