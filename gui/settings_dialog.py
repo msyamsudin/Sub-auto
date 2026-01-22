@@ -44,25 +44,72 @@ class SettingsDialog(ctk.CTkFrame):
             self.destroy()
     
     def _setup_ui(self):
-        # 2. Content (Scrollable)
-        content = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        content.pack(
-            side="top", 
-            fill="both", 
-            expand=True, 
-            padx=SPACING["md"], 
-            pady=(0, SPACING["sm"])
+        # Import PromptManager and tab
+        from core.prompt_manager import PromptManager
+        from .prompt_settings_tab import PromptSettingsTab
+        
+        # Create tabview
+        self.tabview = ctk.CTkTabview(self, fg_color="transparent")
+        self.tabview.pack(
+            side="top",
+            fill="both",
+            expand=True,
+            padx=SPACING["md"],
+            pady=(SPACING["md"], SPACING["sm"])
         )
-        content.grid_columnconfigure(1, weight=1)
-
-        # 3. Footer (Bottom)
+        
+        # Add tabs
+        self.tabview.add("General")
+        self.tabview.add("Prompts")
+        
+        # Setup General tab (existing settings)
+        self._setup_general_tab()
+        
+        # Setup Prompts tab
+        self.prompt_manager = PromptManager()
+        self.prompt_tab = PromptSettingsTab(
+            self.tabview.tab("Prompts"),
+            prompt_manager=self.prompt_manager
+        )
+        self.prompt_tab.pack(fill="both", expand=True)
+        
+        # Footer (Bottom)
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(
-            side="bottom", 
-            fill="x", 
-            padx=SPACING["md"], 
+            side="bottom",
+            fill="x",
+            padx=SPACING["md"],
             pady=SPACING["md"]
         )
+        
+        # Save and Cancel buttons
+        save_btn = ctk.CTkButton(
+            footer,
+            text="Save",
+            width=100,
+            command=self._save_settings,
+            **get_button_style("primary")
+        )
+        save_btn.pack(side="right", padx=SPACING["sm"])
+        
+        cancel_btn = ctk.CTkButton(
+            footer,
+            text="Cancel",
+            width=100,
+            command=self._on_close,
+            **get_button_style("secondary")
+        )
+        cancel_btn.pack(side="right", padx=SPACING["sm"])
+    
+    def _setup_general_tab(self):
+        """Setup the General settings tab (existing content)."""
+        # Content (Scrollable)
+        content = ctk.CTkScrollableFrame(self.tabview.tab("General"), fg_color="transparent")
+        content.pack(
+            fill="both",
+            expand=True
+        )
+        content.grid_columnconfigure(1, weight=1)
         
         # === Populate Content ===
         row = 0
@@ -461,24 +508,7 @@ class SettingsDialog(ctk.CTkFrame):
         # Remove old subtitles (checkbox hidden but variable kept)
         self.remove_subs_var = ctk.BooleanVar(value=True)
         
-        # === Populate Footer ===
-        save_btn = ctk.CTkButton(
-            footer,
-            text="Save",
-            width=100,
-            command=self._save_settings,
-            **get_button_style("primary")
-        )
-        save_btn.pack(side="right", padx=SPACING["sm"])
-        
-        cancel_btn = ctk.CTkButton(
-            footer,
-            text="Cancel",
-            width=100,
-            command=self._on_close,
-            **get_button_style("secondary")
-        )
-        cancel_btn.pack(side="right", padx=SPACING["sm"])
+
         
         # Initial state setup
         self._on_provider_change(self.provider_var.get())

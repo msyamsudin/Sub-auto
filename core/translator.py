@@ -15,6 +15,7 @@ from .llm_provider import PolicyViolationError
 from .style_handler import StyleHandler
 from .retry_handler import NetworkRetryHandler, RetryConfig
 from .model_manager import ModelManager, get_api_manager, validate_and_save_api_key
+from .prompt_manager import PromptManager
 
 # Generic type for return values
 T = TypeVar('T')
@@ -57,32 +58,12 @@ class TranslationResult:
 
 class Translator:
     """Translator using configured LLM provider."""
-    
-    # Translation prompt template
-    TRANSLATION_PROMPT = """You are a professional subtitle translator. Translate the following subtitle lines from {source_lang} to {target_lang}.
-
-CRITICAL RULES:
-1. Use natural, spoken Indonesian suitable for subtitles
-2. Prioritize meaning, tone, and emotion over literal translation
-3. Do not force-translate commonly used loanwords
-4. Keep names, proper nouns, and Japanese honorifics unchanged
-5. Preserve formatting markers like \\N exactly
-6. If a line is already in the target language or is a non-dialogue cue, keep it as-is
-7. Keep translations concise and subtitle-friendly
-
-CONTEXT:
-{context}
-
-TRANSLATE:
-{lines}
-
-OUTPUT:
-[NUMBER] translated text"""
 
     def __init__(
         self, 
         model_manager: Optional[ModelManager] = None,
-        retry_config: Optional[RetryConfig] = None
+        retry_config: Optional[RetryConfig] = None,
+        prompt_manager: Optional[PromptManager] = None
     ):
         """Initialize Translator."""
         if model_manager:
@@ -100,6 +81,7 @@ OUTPUT:
         self.token_usage = TokenUsage()
         self.retry_handler = NetworkRetryHandler(retry_config)
         self.style_handler = StyleHandler()  # Initialize StyleHandler
+        self.prompt_manager = prompt_manager or PromptManager()  # Initialize PromptManager
         self._on_retry_callback: Optional[Callable[[int, float, str], None]] = None
         self.logger = get_logger()
         self.should_stop = False
@@ -187,8 +169,9 @@ OUTPUT:
             
         lines_text = "\n".join(lines_text_parts)
         
-        # Build prompt
-        prompt = self.TRANSLATION_PROMPT.format(
+        # Build prompt - get from PromptManager
+        prompt_template = self.prompt_manager.get_active_prompt()
+        prompt = prompt_template.format(
             source_lang=source_lang,
             target_lang=target_lang,
             context=context,
