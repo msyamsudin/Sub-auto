@@ -34,8 +34,8 @@ class PromptSettingsTab(ctk.CTkFrame):
     def _setup_ui(self):
         """Setup the UI layout."""
         # Main container with two columns
-        self.grid_columnconfigure(0, weight=1, minsize=250)
-        self.grid_columnconfigure(1, weight=3)
+        self.grid_columnconfigure(0, weight=1, minsize=260)  # Reduced minsize slightly
+        self.grid_columnconfigure(1, weight=3)  # Balanced ratio back to 1:3 for a more standard look
         self.grid_rowconfigure(0, weight=1)
         
         # Left: Prompt List
@@ -61,12 +61,17 @@ class PromptSettingsTab(ctk.CTkFrame):
         header.grid(row=0, column=0, sticky="w", padx=SPACING["md"], pady=SPACING["md"])
         
         # Scrollable list
-        self.prompt_list = ctk.CTkScrollableFrame(
+        self.prompt_scroll = ctk.CTkScrollableFrame(
             list_frame,
             fg_color="transparent"
         )
-        self.prompt_list.grid(row=1, column=0, sticky="nsew", padx=SPACING["sm"], pady=(0, SPACING["sm"]))
-        self.prompt_list.grid_columnconfigure(0, weight=1)
+        self.prompt_scroll.grid(row=1, column=0, sticky="nsew", padx=SPACING["sm"], pady=(0, SPACING["sm"]))
+        self.prompt_scroll.grid_columnconfigure(0, weight=1)
+        
+        # Internal container for items to allow safe clearing
+        self.prompt_list_container = ctk.CTkFrame(self.prompt_scroll, fg_color="transparent")
+        self.prompt_list_container.pack(fill="x", expand=True, anchor="n")
+        self.prompt_list_container.grid_columnconfigure(0, weight=1)
         
         # New prompt button
         new_btn = ctk.CTkButton(
@@ -81,12 +86,18 @@ class PromptSettingsTab(ctk.CTkFrame):
         """Setup the prompt editor on the right side."""
         editor_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
         editor_frame.grid(row=0, column=1, sticky="nsew")
-        editor_frame.grid_rowconfigure(2, weight=1)
+        editor_frame.grid_rowconfigure(0, weight=1)
         editor_frame.grid_columnconfigure(0, weight=1)
         
+        # Inner container to constrain width and add "breathing room"
+        inner_frame = ctk.CTkFrame(editor_frame, fg_color="transparent")
+        inner_frame.grid(row=0, column=0, sticky="nsew", padx=SPACING["xl"], pady=SPACING["md"])
+        inner_frame.grid_rowconfigure(3, weight=1)
+        inner_frame.grid_columnconfigure(0, weight=1)
+
         # Header with status
-        header_frame = ctk.CTkFrame(editor_frame, fg_color="transparent")
-        header_frame.grid(row=0, column=0, sticky="ew", padx=SPACING["md"], pady=SPACING["md"])
+        header_frame = ctk.CTkFrame(inner_frame, fg_color="transparent")
+        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, SPACING["md"]))
         header_frame.grid_columnconfigure(0, weight=1)
         
         self.editor_title = ctk.CTkLabel(
@@ -108,8 +119,8 @@ class PromptSettingsTab(ctk.CTkFrame):
         self.status_badge.grid(row=0, column=1, sticky="e", padx=(SPACING["md"], 0))
         
         # Name field
-        name_frame = ctk.CTkFrame(editor_frame, fg_color="transparent")
-        name_frame.grid(row=1, column=0, sticky="ew", padx=SPACING["md"], pady=(0, SPACING["sm"]))
+        name_frame = ctk.CTkFrame(inner_frame, fg_color="transparent")
+        name_frame.grid(row=1, column=0, sticky="ew", pady=(0, SPACING["sm"]))
         name_frame.grid_columnconfigure(1, weight=1)
         
         ctk.CTkLabel(name_frame, text="Name:", **get_label_style("body")).grid(row=0, column=0, sticky="w")
@@ -123,36 +134,35 @@ class PromptSettingsTab(ctk.CTkFrame):
         
         # Content area
         content_label = ctk.CTkLabel(
-            editor_frame,
+            inner_frame,
             text="Content:",
             **get_label_style("body")
         )
-        content_label.grid(row=2, column=0, sticky="nw", padx=SPACING["md"], pady=(0, SPACING["xs"]))
+        content_label.grid(row=2, column=0, sticky="nw", pady=(0, SPACING["xs"]))
         
         self.content_text = ctk.CTkTextbox(
-            editor_frame,
+            inner_frame,
             fg_color=COLORS["bg_dark"],
             border_width=1,
             border_color=COLORS["border"],
             font=(FONTS["family"], FONTS["body_size"]),
             wrap="word"
         )
-        self.content_text.grid(row=3, column=0, sticky="nsew", padx=SPACING["md"], pady=(0, SPACING["md"]))
-        editor_frame.grid_rowconfigure(3, weight=1)
+        self.content_text.grid(row=3, column=0, sticky="nsew", pady=(0, SPACING["md"]))
         
         # Validation feedback
         self.validation_label = ctk.CTkLabel(
-            editor_frame,
+            inner_frame,
             text="",
             font=(FONTS["family"], FONTS["small_size"]),
             text_color=COLORS["error"],
             anchor="w"
         )
-        self.validation_label.grid(row=4, column=0, sticky="w", padx=SPACING["md"])
+        self.validation_label.grid(row=4, column=0, sticky="w")
         
         # Action buttons
-        button_frame = ctk.CTkFrame(editor_frame, fg_color="transparent")
-        button_frame.grid(row=5, column=0, sticky="ew", padx=SPACING["md"], pady=SPACING["md"])
+        button_frame = ctk.CTkFrame(inner_frame, fg_color="transparent")
+        button_frame.grid(row=5, column=0, sticky="ew", pady=SPACING["md"])
         
         self.save_btn = ctk.CTkButton(
             button_frame,
@@ -203,35 +213,47 @@ class PromptSettingsTab(ctk.CTkFrame):
     
     def _load_prompts(self):
         """Load all prompts into the list."""
-        # Clear existing
-        for widget in self.prompt_list.winfo_children():
+        # Clear existing safely from container
+        for widget in self.prompt_list_container.winfo_children():
             widget.destroy()
         
+        self.prompt_widgets = {}
         prompts = self.prompt_manager.get_all_prompts()
         
-        for name, prompt in prompts.items():
-            self._create_prompt_item(prompt)
+        for i, (name, prompt) in enumerate(prompts.items()):
+            self._create_prompt_item(prompt, row=i)
+            
+        # Reselect if exists
+        if self.selected_prompt and self.selected_prompt.name in prompts:
+            self._update_selection_visuals(self.selected_prompt.name)
     
-    def _create_prompt_item(self, prompt: Prompt):
+    def _create_prompt_item(self, prompt: Prompt, row: int = 0):
         """Create a prompt list item."""
         item_frame = ctk.CTkFrame(
-            self.prompt_list,
+            self.prompt_list_container,
             fg_color=COLORS["bg_dark"],
             corner_radius=RADIUS["sm"],
             border_width=1,
-            border_color=COLORS["border"]
+            border_color=COLORS["border"],
+            height=60  # Explicit height to prevent weird stretching
         )
-        item_frame.pack(fill="x", pady=SPACING["xs"])
+        item_frame.grid(row=row, column=0, sticky="ew", pady=SPACING["xs"], padx=SPACING["xs"])
+        item_frame.grid_propagate(False) # Force fixed height
         item_frame.grid_columnconfigure(0, weight=1)
+        item_frame.grid_rowconfigure(0, weight=1)
         
-        # Name and badges
         name_frame = ctk.CTkFrame(item_frame, fg_color="transparent")
-        name_frame.grid(row=0, column=0, sticky="ew", padx=SPACING["sm"], pady=SPACING["sm"])
+        name_frame.grid(row=0, column=0, sticky="nsew", padx=SPACING["md"])
         name_frame.grid_columnconfigure(0, weight=1)
+        name_frame.grid_rowconfigure(0, weight=1)
         
+        display_name = prompt.name
+        if len(display_name) > 28:
+            display_name = display_name[:25] + "..."
+            
         name_label = ctk.CTkLabel(
             name_frame,
-            text=prompt.name,
+            text=display_name,
             font=(FONTS["family"], FONTS["body_size"], "bold" if prompt.active else "normal"),
             text_color=COLORS["primary"] if prompt.active else COLORS["text_primary"],
             anchor="w"
@@ -245,22 +267,28 @@ class PromptSettingsTab(ctk.CTkFrame):
         if prompt.active:
             active_badge = ctk.CTkLabel(
                 badge_frame,
-                text="● ACTIVE",
-                font=(FONTS["family"], FONTS["small_size"], "bold"),
+                text="●",
+                font=(FONTS["family"], FONTS["body_size"], "bold"),
                 text_color=COLORS["success"]
             )
             active_badge.pack(side="left", padx=SPACING["xs"])
         
         if prompt.locked:
-            lock_badge = ctk.CTkLabel(
+            lock_label = ctk.CTkLabel(
                 badge_frame,
                 text="🔒",
+                text_color=COLORS["text_muted"],
                 font=(FONTS["family"], FONTS["small_size"])
             )
-            lock_badge.pack(side="left")
+            lock_label.pack(side="left")
+        
+        self.prompt_widgets[prompt.name] = {
+            "frame": item_frame,
+            "label": name_label
+        }
         
         # Make clickable
-        for widget in [item_frame, name_frame, name_label]:
+        for widget in [item_frame, name_frame, name_label, badge_frame]:
             widget.bind("<Button-1>", lambda e, p=prompt: self._on_select_prompt(p))
             widget.configure(cursor="hand2")
     
@@ -288,6 +316,22 @@ class PromptSettingsTab(ctk.CTkFrame):
         
         # Clear validation
         self.validation_label.configure(text="")
+        
+        # Update selection visuals
+        self._update_selection_visuals(prompt.name)
+        
+    def _update_selection_visuals(self, selected_name: str):
+        """Update visual state of prompt list items."""
+        for name, widgets in self.prompt_widgets.items():
+            is_selected = (name == selected_name)
+            
+            # Change background color
+            bg_color = COLORS["bg_light"] if is_selected else COLORS["bg_dark"]
+            widgets["frame"].configure(fg_color=bg_color, border_color=COLORS["accent"] if is_selected else COLORS["border"])
+            
+            # Highlight text slightly if selected, but respect active color
+            # We don't change text color here to preserve the "Active" Green logic,
+            # but the frame border and bg change is enough feedback.
     
     def _set_editor_state(self, enabled: bool, locked: bool = False):
         """Enable or disable editor controls."""
