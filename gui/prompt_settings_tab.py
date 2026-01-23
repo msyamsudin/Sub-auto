@@ -352,11 +352,17 @@ class PromptSettingsTab(ctk.CTkFrame):
             return
         
         # Get values
+        old_name = self.selected_prompt.name
         new_name = self.name_entry.get().strip()
         new_content = self.content_text.get("1.0", "end-1c").strip()
         
         if not new_name:
             self.validation_label.configure(text="❌ Name cannot be empty", text_color=COLORS["error"])
+            return
+            
+        # Check for name collision if renaming
+        if new_name != old_name and self.prompt_manager.get_all_prompts().get(new_name):
+            self.validation_label.configure(text="❌ A prompt with this name already exists", text_color=COLORS["error"])
             return
         
         # Validate content
@@ -368,16 +374,20 @@ class PromptSettingsTab(ctk.CTkFrame):
             )
             return
         
-        # Update prompt
+        # If name changed, delete the old one first to avoid duplicates
+        if new_name != old_name:
+            self.prompt_manager.delete_prompt(old_name)
+            
+        # Update prompt and save
         self.selected_prompt.name = new_name
         self.selected_prompt.content = new_content
         
-        # Save
         success, message = self.prompt_manager.save_prompt(self.selected_prompt)
         
         if success:
             self.validation_label.configure(text="✅ Saved successfully", text_color=COLORS["success"])
             self._load_prompts()
+            self._on_select_prompt(self.selected_prompt) # Refresh selection
         else:
             self.validation_label.configure(text=f"❌ {message}", text_color=COLORS["error"])
     
