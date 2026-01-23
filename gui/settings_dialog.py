@@ -755,7 +755,7 @@ class SettingsDialog(ctk.CTkFrame):
         except Exception:
             pass
 
-    def _populate_model_list(self, models, max_display=50):
+    def _populate_model_list(self, models, max_display=1000):
         """Populate the inline model list with buttons (optimized)."""
         # Cancel any pending batch loading
         if hasattr(self, '_model_load_job') and self._model_load_job:
