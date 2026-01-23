@@ -417,7 +417,7 @@ class PromptSettingsTab(ctk.CTkFrame):
             version="1.0.0",
             active=False,
             locked=False,
-            content="You are a professional translator.\n\nCONTEXT:\n{context}\n\nTRANSLATE:\n{lines}\n\nOUTPUT:\n[NUMBER] translated text",
+            content="You are a professional translator. Translate from {source_lang} to {target_lang}.\n\nCONTEXT:\n{context}\n\nTRANSLATE:\n{lines}\n\nOUTPUT:\n[NUMBER] translated text",
             metadata=PromptMetadata(
                 description="Custom prompt",
                 author="User",
