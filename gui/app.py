@@ -501,14 +501,34 @@ class SubAutoApp(ctk.CTk):
         """Update UI states based on current progress."""
         # Sync with global ModelManager state (e.g. if validated in settings)
         manager = get_api_manager()
-        if manager.is_configured and not self.api_validated:
+        if manager.is_configured:
             self.api_validated = True
-            if not self.selected_model:
-                self.selected_model = manager.selected_model
+            self.selected_model = manager.selected_model
 
         has_file = self.current_file is not None
         has_track = self.selected_track_id is not None
         api_ready = self.api_validated
+        
+        # Update model dropdown and status in Step 2
+        if api_ready:
+            display_names = manager.get_model_display_names()
+            if display_names:
+                self.model_dropdown.configure(values=display_names, state="normal")
+                info = manager.get_selected_model_info()
+                if info:
+                    self.model_dropdown.set(info.short_name)
+            
+            self.model_status.configure(
+                text="✓ Connected",
+                text_color=COLORS["success"]
+            )
+            if hasattr(self, "validate_btn"):
+                self.validate_btn.grid_forget()
+        else:
+            self.model_dropdown.configure(state="disabled")
+            if not self.is_validating:
+                self.model_status.configure(text="⚠ Not connected", text_color=COLORS["text_muted"])
+                self.model_dropdown.set("Not connected")
         
         completed_indices = []
         
@@ -555,7 +575,12 @@ class SubAutoApp(ctk.CTk):
         
         # Update title bar API status
         if not self.is_validating:
-            self.title_bar.set_api_status(api_ready, self.selected_model or "")
+            display_model = self.selected_model
+            info = manager.get_selected_model_info()
+            if info:
+                display_model = info.short_name
+                
+            self.title_bar.set_api_status(api_ready, display_model or "")
         
         # Step 3: Translation (Processing)
         # 1. Processing is active OR
@@ -747,18 +772,14 @@ class SubAutoApp(ctk.CTk):
         self.remove_old_subs = settings.get("remove_old_subs", True)
         self._init_mkv_handler()  # Reinitialize with new path
         
+        # Sync API validation state
+        manager = get_api_manager()
+        self.api_validated = manager.is_configured
+        self.selected_model = manager.selected_model
+        
         # If AI settings changed, handle validation sync
         if settings.get("ai_settings_changed", False):
-            manager = get_api_manager()
-            if manager.is_configured:
-                # Already successfully validated in SettingsDialog
-                self.api_validated = True
-                self.selected_model = manager.selected_model
-                self._update_step_states()
-            else:
-                # Need to re-validate or was never validated
-                self.api_validated = False
-                
+            if not manager.is_configured:
                 # Check if we should auto-connect
                 if self.config.provider == "ollama" or \
                    (self.config.provider == "openrouter" and self.config.openrouter_api_key) or \
@@ -766,13 +787,16 @@ class SubAutoApp(ctk.CTk):
                     # Show connecting status first
                     self.is_validating = True
                     self.title_bar.set_api_status(False, connecting=True)
-                    self._update_step_states()
                     self._validate_api()
                 else:
-                    self._update_step_states()
                     self.toast.info("AI settings updated. Please reconnect.")
+            else:
+                self.toast.success("Settings updated")
         else:
             self.toast.success("Settings saved")
+            
+        # Always refresh UI states to ensure title bar and step info are in sync
+        self._update_step_states()
     
     def _on_file_selected(self, file_path: str):
         """Handle file selection."""

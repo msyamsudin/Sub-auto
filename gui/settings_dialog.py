@@ -611,6 +611,16 @@ class SettingsDialog(ctk.CTkFrame):
 
         self.config.save()
         
+        # Update ModelManager state so app.py picks it up immediately
+        manager = get_api_manager()
+        manager.configure(new_provider)
+        if new_provider == "openrouter":
+            manager.select_model(new_or_model)
+        elif new_provider == "ollama":
+            manager.select_model(new_ollama_model)
+        elif new_provider == "groq":
+            manager.select_model(new_gq_model)
+        
         # Notify if AI settings changed
         ai_settings_changed = (
             provider_changed or 
