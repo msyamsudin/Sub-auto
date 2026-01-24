@@ -25,12 +25,14 @@ from .components import (
 from .settings_dialog import SettingsDialog
 from .toast import ToastManager
 from .processing_view import ProcessingView
+from .history_view import HistoryView
 
 from core.config_manager import get_config, ConfigManager
 from core.mkv_handler import MKVHandler, SubtitleTrack
 from core.subtitle_parser import SubtitleParser
 from core.translator import Translator, get_api_manager, TokenUsage, validate_and_save_api_key
 from core.state_manager import get_state_manager, StateManager
+from core.history_manager import get_history_manager, HistoryEntry
 from core.logger import get_logger, Logger
 
 from core.version import __version__
@@ -70,6 +72,7 @@ class SubAutoApp(ctk.CTk):
         # State
         self.config = get_config()
         self.settings_view: Optional[SettingsDialog] = None
+        self.history_view: Optional[HistoryView] = None
         self.mkv_handler: Optional[MKVHandler] = None
         self.current_file: Optional[str] = None
         self.subtitle_tracks: List[SubtitleTrack] = []
@@ -81,6 +84,7 @@ class SubAutoApp(ctk.CTk):
         self.selected_model: Optional[str] = None
         self.last_summary_data = None
         self.state_manager = get_state_manager()
+        self.history_manager = get_history_manager()
         self.logger = get_logger()
         self.remove_old_subs = True
         self._pending_resume = False
@@ -181,7 +185,9 @@ class SubAutoApp(ctk.CTk):
             title=self.APP_TITLE,
             version=self.APP_VERSION,
             on_settings=self._open_settings,
+            on_history=self._open_history,
             show_settings=True,
+            show_history=True,
             is_dialog=False
         )
         self.title_bar.grid(row=0, column=0, sticky="ew")
@@ -780,6 +786,35 @@ class SubAutoApp(ctk.CTk):
         # Restore Footer
         if hasattr(self, 'footer_frame'):
             self.footer_frame.grid()
+
+    def _open_history(self):
+        """Open history view."""
+        if self.history_view:
+            return
+
+        # Create history view
+        self.history_view = HistoryView(
+            self,
+            on_close=self._close_history
+        )
+        
+        # Cover the main container
+        self.history_view.grid(row=1, column=0, rowspan=2, sticky="nsew")
+        self.history_view.lift()
+        
+        # Hide Footer
+        if hasattr(self, 'footer_frame'):
+            self.footer_frame.grid_remove()
+
+    def _close_history(self):
+        """Close history view."""
+        if self.history_view:
+            self.history_view.destroy()
+            self.history_view = None
+            
+        # Restore Footer
+        if hasattr(self, 'footer_frame'):
+            self.footer_frame.grid()
     
     def _on_settings_save(self, settings: dict):
         """Handle settings save."""
@@ -1083,6 +1118,11 @@ class SubAutoApp(ctk.CTk):
         lines_count = 0
         model_used = self.selected_model or "gemini-1.5-flash"
         
+        # Capture current prompt name
+        api_manager = get_api_manager()
+        temp_translator = Translator(model_manager=api_manager)
+        prompt_used = temp_translator.prompt_manager.get_active_prompt_name()
+        
         try:
             # Check for resume state
             resume_state = None
@@ -1193,7 +1233,8 @@ class SubAutoApp(ctk.CTk):
                 "lines_count": lines_count,
                 "start_time": start_time,
                 "final_tokens": final_tokens,
-                "api_manager": api_manager
+                "api_manager": api_manager,
+                "prompt_used": prompt_used
             }
             
             # Show review editor on main thread
@@ -1431,6 +1472,44 @@ class SubAutoApp(ctk.CTk):
             
             # Done
             duration = time.time() - payload["start_time"]
+            
+            # Save to history
+            try:
+                final_tokens = payload.get("final_tokens", TokenUsage())
+                
+                # Calculate cost estimation if using OpenRouter
+                estimated_cost = None
+                if self.config.provider == "openrouter":
+                    api_manager = payload["api_manager"]
+                    model_info = api_manager.get_selected_model_info()
+                    if model_info:
+                        estimated_cost = model_info.calculate_cost(
+                            final_tokens.prompt_tokens,
+                            final_tokens.completion_tokens
+                        )
+
+                entry = HistoryEntry(
+                    source_file=str(payload["current_file"]),
+                    source_file_name=payload["input_path"].name,
+                    output_file=str(output_mkv_path),
+                    track_id=payload.get("track_id", -1),
+                    source_lang=payload.get("source_lang", ""),
+                    target_lang="ind",
+                    model_name=model_used,
+                    provider=self.config.provider,
+                    prompt_name=payload.get("prompt_used", ""),
+                    total_lines=payload.get("total_lines", 0),
+                    lines_translated=payload.get("lines_count", 0),
+                    duration_seconds=duration,
+                    prompt_tokens=final_tokens.prompt_tokens,
+                    completion_tokens=final_tokens.completion_tokens,
+                    estimated_cost=estimated_cost,
+                    status="completed"
+                )
+                self.history_manager.add_entry(entry)
+            except Exception as history_error:
+                self.logger.warning(f"Failed to save history: {history_error}")
+
             self.state_manager.clear()
             
             # Calculate cost estimation if using OpenRouter

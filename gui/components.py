@@ -29,7 +29,9 @@ class CustomTitleBar(ctk.CTkFrame):
         title: str = "Sub-auto",
         version: str = "",
         on_settings: Optional[Callable] = None,
+        on_history: Optional[Callable] = None,
         show_settings: bool = True,
+        show_history: bool = True,
         is_dialog: bool = False,
         draggable: bool = True,
         show_minimize: bool = True,
@@ -42,7 +44,9 @@ class CustomTitleBar(ctk.CTkFrame):
         self.title_text = title
         self.version = version
         self.on_settings = on_settings
+        self.on_history = on_history
         self.show_settings = show_settings
+        self.show_history = show_history
         self.is_dialog = is_dialog
         self.draggable = draggable
         self.show_minimize = show_minimize
@@ -116,6 +120,21 @@ class CustomTitleBar(ctk.CTkFrame):
                 command=self.on_settings
             )
             self.settings_btn.pack(side="left")
+        
+        # History button (optional)
+        if self.show_history and self.on_history:
+            self.history_btn = ctk.CTkButton(
+                controls_frame,
+                text="⏳", # Standard emoji for history
+                width=btn_width,
+                height=btn_height,
+                corner_radius=0,
+                fg_color="transparent",
+                hover_color=COLORS["bg_light"],
+                text_color=COLORS["text_secondary"],
+                command=self.on_history
+            )
+            self.history_btn.pack(side="left")
         
         # Minimize button
         if self.show_minimize:

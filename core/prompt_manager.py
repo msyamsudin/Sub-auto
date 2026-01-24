@@ -144,6 +144,18 @@ OUTPUT:
         self.logger.error("Failed to load any prompt from repository, using hardcoded fallback")
         return self.DEFAULT_PROMPTS["Standard"]
     
+    def get_active_prompt_name(self) -> str:
+        """
+        Get the name of the active prompt.
+        
+        Returns:
+            The name of the active prompt, or 'Standard' as fallback.
+        """
+        active = self.repository.get_active()
+        if active:
+            return active.name
+        return "Standard"
+    
     def validate_prompt(self, content: str) -> Tuple[bool, List[str]]:
         """
         Validate a prompt content string.
