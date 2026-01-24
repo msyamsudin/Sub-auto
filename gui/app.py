@@ -89,6 +89,20 @@ class SubAutoApp(ctk.CTk):
         self._pending_estimates = set()
         self._subtitle_cache = {}
         
+        # Language mapping from ISO 639-2 (MKVToolnix) to human names
+        self.LANGUAGE_MAPPING = {
+            "eng": "English",
+            "ara": "Arabic",
+            "jpn": "Japanese",
+            "kor": "Korean",
+            "chi": "Chinese",
+            "zho": "Chinese",
+            "ind": "Indonesian",
+            "may": "Indonesian",
+            "msa": "Indonesian",
+            "und": "English",
+        }
+        
         # Initialize MKV handler
         self._init_mkv_handler()
         
@@ -349,7 +363,7 @@ class SubAutoApp(ctk.CTk):
             opts_content,
             label="From",
             input_type="dropdown",
-            options=["English", "Japanese", "Korean", "Chinese", "Auto-detect"],
+            options=["English", "Japanese", "Korean", "Chinese", "Arabic", "Auto-detect"],
             default_value="English"
         )
         self.source_lang_row.grid(row=0, column=0, sticky="ew", padx=(0, SPACING["sm"]), pady=SPACING["xs"])
@@ -880,6 +894,28 @@ class SubAutoApp(ctk.CTk):
                 return
             self.selected_track_id = None
             
+        # Update source language based on track info
+        if self.selected_track_id is not None:
+            track = next((t for t in self.subtitle_tracks if t.track_id == self.selected_track_id), None)
+            if track and track.language:
+                lang_code = track.language.lower()
+                lang_name = self.LANGUAGE_MAPPING.get(lang_code)
+                
+                if lang_name:
+                    # Ensure the option exists in the dropdown
+                    current_options = self.source_lang_row.input.cget("values")
+                    if lang_name not in current_options:
+                        new_options = list(current_options)
+                        # Insert before "Auto-detect" if it exists, otherwise append
+                        if "Auto-detect" in new_options:
+                            new_options.insert(new_options.index("Auto-detect"), lang_name)
+                        else:
+                            new_options.append(lang_name)
+                        self.source_lang_row.input.configure(values=new_options)
+                    
+                    self.source_lang_row.set_value(lang_name)
+                    self.logger.info(f"🌐 Auto-selected source language: {lang_name} (from track {self.selected_track_id})")
+
         self._update_step_states()
     
     def _on_model_change(self, model: str):
