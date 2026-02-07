@@ -1372,27 +1372,70 @@ class SubAutoApp(ctk.CTk):
         # Store payload for later use
         self.merge_payload = payload
         
-        # Create editor frame structure
-        # We need to ensure step 4 frame exists or is updated
+        # Determine which editor to show
+        # Default to new panel if not specified in config (or add to config later)
+        use_new_review = getattr(self, "use_new_review_panel", True)
         
-        # Clean up old editor if exists
+        # Clean up old frame
         if 4 in self.step_frames:
             try:
-                self.step_frames[4].destroy()
+                for widget in self.step_frames[4].winfo_children():
+                    widget.destroy()
             except:
                 pass
-            
-        # Create new editor instance
-        self.editor_view = SubtitleEditor(
-            self.content_area,
-            subtitle_path=payload["translated_sub_path"],
-            on_approve=self._on_review_approved,
-            on_discard=self._on_review_discarded
-        )
-        self.step_frames[4] = self.editor_view
+        else:
+            self.step_frames[4] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+            self.step_frames[4].grid_columnconfigure(0, weight=1)
+            self.step_frames[4].grid_rowconfigure(0, weight=1)
+
+        # Create container for toggle
+        container = self.step_frames[4]
         
-        # Assign step 4 to the editor view
-        # Update Stepper to Step 4 (Review)
+        # Header with Toggle
+        header_frame = ctk.CTkFrame(container, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, SPACING["sm"]))
+        
+        ctk.CTkLabel(header_frame, text="Review Subtitles", **get_label_style("heading")).pack(side="left")
+        
+        # Toggle Switch
+        def toggle_editor():
+            self.use_new_review_panel = not getattr(self, "use_new_review_panel", True)
+            self._show_review_editor(payload) # Reload
+            
+        current_mode = "Modern UI" if use_new_review else "Classic Editor"
+        toggle_btn = ctk.CTkButton(
+            header_frame, 
+            text=f"Switch to {('Classic' if use_new_review else 'Modern')}",
+            command=toggle_editor,
+            width=120,
+            height=24,
+            **get_button_style("ghost")
+        )
+        toggle_btn.pack(side="right")
+        
+        # Editor Container
+        editor_container = ctk.CTkFrame(container, fg_color="transparent")
+        editor_container.pack(fill="both", expand=True)
+
+        if use_new_review:
+            from .components import SubtitleReviewPanel
+            self.editor_view = SubtitleReviewPanel(
+                editor_container,
+                subtitle_path=payload["translated_sub_path"],
+                on_approve=self._on_review_approved,
+                on_discard=self._on_review_discarded
+            )
+        else:
+            self.editor_view = SubtitleEditor(
+                editor_container,
+                subtitle_path=payload["translated_sub_path"],
+                on_approve=self._on_review_approved,
+                on_discard=self._on_review_discarded
+            )
+            
+        self.editor_view.pack(fill="both", expand=True)
+        
+        # Update Stepper
         self.stepper.set_step(4)
         self._update_step_states()
         self._show_step(4)

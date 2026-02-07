@@ -2951,3 +2951,4 @@ class HorizontalStepper(ctk.CTkFrame):
         self.completed_steps = set(steps)
         self._refresh()
 
+from .subtitle_review_panel import SubtitleReviewPanel
