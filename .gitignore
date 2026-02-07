@@ -30,3 +30,6 @@ tests/
 
 # Management Scripts
 manage_version.bat
+
+# History
+history.json
