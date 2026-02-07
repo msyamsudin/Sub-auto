@@ -1369,27 +1369,33 @@ class SubAutoApp(ctk.CTk):
         self.is_processing = False
         self._exit_processing_mode()
         
-        # Update Stepper to Step 4 (Review)
-        self.stepper.set_step(4)
-        self._update_step_states()
-        
         # Store payload for later use
         self.merge_payload = payload
         
-        # Create and show editor as a toplevel window
-        if hasattr(self, 'editor_view') and self.editor_view:
+        # Create editor frame structure
+        # We need to ensure step 4 frame exists or is updated
+        
+        # Clean up old editor if exists
+        if 4 in self.step_frames:
             try:
-                self.editor_view.destroy()
+                self.step_frames[4].destroy()
             except:
                 pass
-        
+            
+        # Create new editor instance
         self.editor_view = SubtitleEditor(
-            self,
+            self.content_area,
             subtitle_path=payload["translated_sub_path"],
             on_approve=self._on_review_approved,
             on_discard=self._on_review_discarded
         )
-        # No need to grid() - it's a toplevel window now
+        self.step_frames[4] = self.editor_view
+        
+        # Assign step 4 to the editor view
+        # Update Stepper to Step 4 (Review)
+        self.stepper.set_step(4)
+        self._update_step_states()
+        self._show_step(4)
         
         self.toast.info("Translation complete! Please review the subtitles.")
     
@@ -1399,8 +1405,6 @@ class SubAutoApp(ctk.CTk):
             # Save edited content back to file
             with open(self.merge_payload["translated_sub_path"], 'w', encoding='utf-8') as f:
                 f.write(content)
-            
-            # Editor window closes itself
             
             # Proceed with merge
             self.toast.info("Merging subtitle into video...")
@@ -1423,12 +1427,12 @@ class SubAutoApp(ctk.CTk):
             if extracted_path and Path(extracted_path).exists():
                 Path(extracted_path).unlink()
             
-            # Editor window closes itself
-            
             # Clear state
             self.state_manager.clear()
             self.merge_payload = None
             
+            # Go back to Step 2 (Configuration)
+            self._on_step_change(2)
             self.toast.info("Translation discarded")
             
         except Exception as e:

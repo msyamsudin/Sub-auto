@@ -2036,7 +2036,7 @@ class ModelSelectorDialog(ctk.CTkToplevel):
         self.destroy()
 
 
-class SubtitleEditor(ctk.CTkToplevel):
+class SubtitleEditor(ctk.CTkFrame):
     """
     Subtitle editor dialog for reviewing and editing translated subtitles.
     Displays the SRT content in an editable text area with save/discard options.
@@ -2058,38 +2058,6 @@ class SubtitleEditor(ctk.CTkToplevel):
         self.on_discard_callback = on_discard
         self.original_content = ""
         
-        # Window configuration
-        self.title("Review Subtitle Translation")
-        self.configure(fg_color=COLORS["bg_dark"])
-        
-        # Set window size and position
-        width = 1200
-        height = 800
-        
-        # Center on parent window
-        root = master.winfo_toplevel()
-        root.update_idletasks()
-        
-        parent_x = root.winfo_x()
-        parent_y = root.winfo_y()
-        parent_width = root.winfo_width()
-        parent_height = root.winfo_height()
-        
-        x = parent_x + (parent_width - width) // 2
-        y = parent_y + (parent_height - height) // 2
-        
-        self.geometry(f"{width}x{height}+{x}+{y}")
-        
-        # Set minimum size
-        self.minsize(800, 600)
-        
-        # Make it modal
-        self.transient(root)
-        self.grab_set()
-        
-        # Handle window close
-        self.protocol("WM_DELETE_WINDOW", self._on_window_close)
-        
         # Editor state
         self.undo_stack = []
         self.redo_stack = []
@@ -2103,16 +2071,24 @@ class SubtitleEditor(ctk.CTkToplevel):
         # Setup keyboard shortcuts
         self._setup_keyboard_shortcuts()
         
-        # Focus the window
-        self.focus_force()
+        # Focus the editor
+        self.after(100, lambda: self.text_editor.focus_set())
     
     def _setup_keyboard_shortcuts(self):
         """Setup keyboard shortcuts."""
-        self.bind("<Control-s>", lambda e: self._on_approve())
-        self.bind("<Control-f>", lambda e: self._show_find_dialog())
-        self.bind("<Control-h>", lambda e: self._show_replace_dialog())
-        self.bind("<Control-g>", lambda e: self._show_goto_dialog())
-        self.bind("<Escape>", lambda e: self._on_window_close())
+        # Bind to the frame or text editor, as we are not a window anymore
+        # We need to bind to the text editor widget mostly, or the frame if it has focus
+        
+        # Bind verify specific shortcuts to the text editor
+        self.text_editor.bind("<Control-s>", lambda e: self._on_approve())
+        self.text_editor.bind("<Control-f>", lambda e: self._show_find_dialog())
+        self.text_editor.bind("<Control-h>", lambda e: self._show_replace_dialog())
+        self.text_editor.bind("<Control-g>", lambda e: self._show_goto_dialog())
+        
+        # Escape to discard/close - might need to bind to root or handle carefully if embedded
+        # For now, let's bind to the text editor
+        self.text_editor.bind("<Escape>", lambda e: self.on_discard_callback() if self.on_discard_callback else None)
+
         # Note: Undo/Redo handled by CTkTextbox natively
     
     def _setup_ui(self):
@@ -2444,13 +2420,14 @@ class SubtitleEditor(ctk.CTkToplevel):
         dialog.title("Find & Replace")
         dialog.geometry("400x200")
         dialog.resizable(False, False)
-        dialog.transient(self)
+        dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
         
         # Center dialog
         self.update_idletasks()
-        x = self.winfo_x() + (self.winfo_width() - 400) // 2
-        y = self.winfo_y() + (self.winfo_height() - 200) // 2
+        # Use root coordinates for correct placement
+        x = self.winfo_rootx() + (self.winfo_width() - 400) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - 200) // 2
         dialog.geometry(f"+{x}+{y}")
         
         # UI
@@ -2480,7 +2457,8 @@ class SubtitleEditor(ctk.CTkToplevel):
                 dialog.destroy()
                 from tkinter import messagebox
                 messagebox.showinfo("Replace", f"Replaced {count} occurrences.")
-                self.stats_label.configure(text=f"Aa Replaced {count} occurrences")
+                if hasattr(self, 'stats_label'):
+                    self.stats_label.configure(text=f"Aa Replaced {count} occurrences")
         
         ctk.CTkButton(btn_frame, text="Replace All", command=do_replace, width=100).pack(side="right")
         ctk.CTkButton(btn_frame, text="Cancel", command=dialog.destroy, fg_color=COLORS["bg_light"], hover_color=COLORS["border"], width=80).pack(side="right", padx=10)
@@ -2611,24 +2589,11 @@ class SubtitleEditor(ctk.CTkToplevel):
         
         if self.on_approve_callback:
             self.on_approve_callback(content)
-        
-        # Close window
-        self.grab_release()
-        self.destroy()
     
     def _on_discard(self):
         """Handle discard button click."""
         if self.on_discard_callback:
             self.on_discard_callback()
-        
-        # Close window
-        self.grab_release()
-        self.destroy()
-    
-    def _on_window_close(self):
-        """Handle window close button (X)."""
-        # Treat as discard
-        self._on_discard()
 
 
 class VerticalStepperItem(ctk.CTkFrame):
