@@ -34,6 +34,7 @@ from core.translator import Translator, get_api_manager, TokenUsage, validate_an
 from core.state_manager import get_state_manager, StateManager
 from core.history_manager import get_history_manager, HistoryEntry
 from core.logger import get_logger, Logger
+from core.utils import extract_anime_title
 
 from core.version import __version__
 
@@ -1095,7 +1096,7 @@ class SubAutoApp(ctk.CTk):
              self._show_step(self.stepper.current_step)
     
     def _start_translation(self):
-        """Start the translation process."""
+        """Start the translation process by asking for title confirmation first."""
         if not self.api_validated:
             self.toast.warning("Please connect API first")
             return
@@ -1103,6 +1104,30 @@ class SubAutoApp(ctk.CTk):
         if not self.current_file or self.selected_track_id is None:
             self.toast.warning("Please select a file and track")
             return
+            
+        # Extract title automatically
+        extracted_title = extract_anime_title(self.current_file)
+        
+        # Show review dialog
+        dialog = ctk.CTkInputDialog(
+            text="Review Anime Title (Used for translation context):", 
+            title="Anime Title Review"
+        )
+        
+        # Inject the default value directly (CTkInputDialog doesn't perfectly support this, 
+        # but we can edit the entry inside after initialization)
+        dialog.after(100, lambda: [dialog._entry.delete(0, 'end'), dialog._entry.insert(0, extracted_title)])
+        
+        # We need to use `after` to make sure it runs without blocking to death, but CTkInputDialog is modal natively.
+        # So we just wait for input
+        reviewed_title = dialog.get_input()
+        
+        if reviewed_title is None:
+            # User cancelled the dialog
+            self.toast.info("Translation cancelled")
+            return
+            
+        self.current_anime_title = reviewed_title.strip()
         
         self.is_processing = True
         self._pending_estimates.clear() # Cancel background work
@@ -1201,7 +1226,8 @@ class SubAutoApp(ctk.CTk):
                 target_lang=target_lang,
                 batch_size=self.config.batch_size,
                 progress_callback=state_callback,
-                state_manager=self.state_manager
+                state_manager=self.state_manager,
+                anime_title=getattr(self, 'current_anime_title', None)
             )
             
             # Apply translations

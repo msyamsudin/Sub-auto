@@ -129,7 +129,8 @@ class Translator:
         source_lang: str = "English",
         target_lang: str = "Indonesian",
         context_lines: Optional[List[SubtitleLine]] = None,
-        on_retry: Optional[Callable[[int, float, str], None]] = None
+        on_retry: Optional[Callable[[int, float, str], None]] = None,
+        anime_title: Optional[str] = None
     ) -> TranslationResult:
         """Translate a batch of subtitle lines."""
         import time
@@ -147,16 +148,19 @@ class Translator:
         retry_callback = on_retry or self._on_retry_callback
         
         # Build context string
-        context = ""
+        context_parts = []
+        if anime_title:
+            context_parts.append(f"Konteks Anime: {anime_title}")
+
         if context_lines:
             context_processed = []
             for line in context_lines[-3:]:
                  # Use simple clean for context to avoid confusion
                 text, _ = self.style_handler.prepare_for_translation(line.text, line.style)
                 context_processed.append(f"[PREV] {text}")
-            context = "\n".join(context_processed)
-        else:
-            context = "(No previous context)"
+            context_parts.append("\n".join(context_processed))
+            
+        context = "\n".join(context_parts) if context_parts else "(No previous context)"
         
         # Prepare lines and store metadata
         lines_text_parts = []
@@ -394,7 +398,8 @@ class Translator:
         target_lang: str = "Indonesian",
         batch_size: int = 25,
         progress_callback: Optional[Callable[[int, int, str, TokenUsage], None]] = None,
-        state_manager: Any = None
+        state_manager: Any = None,
+        anime_title: Optional[str] = None
     ) -> Tuple[List[Tuple[int, str]], List[str], TokenUsage]:
         """Translate all subtitle lines with progress tracking (Sequential)."""
         import time as time_module
@@ -467,7 +472,8 @@ class Translator:
                 lines=batch,
                 source_lang=source_lang,
                 target_lang=target_lang,
-                context_lines=context_lines
+                context_lines=context_lines,
+                anime_title=anime_title
             )
             
             if result.success:
