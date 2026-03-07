@@ -660,74 +660,27 @@ class SubAutoApp(ctk.CTk):
                     self.cost_estimate_label.configure(text="")
                 return
             
-            # Check cache and pending
-            cache_key = f"{self.current_file}:{self.selected_track_id}"
-            if cache_key in self._subtitle_cache:
-                total_chars, line_count = self._subtitle_cache[cache_key]
-            elif cache_key in self._pending_estimates:
-                return
-            else:
-                self._pending_estimates.add(cache_key)
-                
-                # Show loading indicator
-                if hasattr(self, 'cost_estimate_label'):
-                    self.cost_estimate_label.configure(text="💰 Calculating...")
-                
-                # Run extraction in background
-                def do_estimate():
-                    try:
-                        # Use a unique temporary path for estimation to avoid collisions/locks
-                        import tempfile
-                        suffix = ".srt.tmp"
-                        
-                        # Try to get better suffix
-                        try:
-                            tracks = self.mkv_handler.get_subtitle_tracks(self.current_file)
-                            track = next((t for t in tracks if t.track_id == self.selected_track_id), None)
-                            if track:
-                                suffix = track.file_extension + ".tmp"
-                        except:
-                            pass
-                            
-                        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                            temp_output = tmp.name
-                        
-                        extracted_path = self.mkv_handler.extract_subtitle(
-                            self.current_file,
-                            self.selected_track_id,
-                            output_path=temp_output
-                        )
-                        
-                        parser = SubtitleParser()
-                        lines = parser.load(extracted_path)
-                        
-                        # Clean up extracted file
-                        try:
-                            Path(extracted_path).unlink()
-                        except Exception:
-                            pass
-                        
-                        total_chars = sum(len(line.text) for line in lines)
-                        line_count = len(lines)
-                        
-                        # Cache the result
-                        self._subtitle_cache[cache_key] = (total_chars, line_count)
-                        
-                        # Update on main thread
-                        self.after(0, lambda: self._display_token_estimate(model_info, total_chars, line_count))
-                    except Exception as e:
-                        self.after(0, lambda: self.cost_estimate_label.configure(text=""))
-                    finally:
-                        if cache_key in self._pending_estimates:
-                            self._pending_estimates.remove(cache_key)
-                
-                import threading
-                thread = threading.Thread(target=do_estimate, daemon=True)
-                thread.start()
-                return
+            # Use the estimation service
+            from core.estimation_service import EstimationService
             
-            # Calculate and display from cache
-            self._display_token_estimate(model_info, total_chars, line_count)
+            if not hasattr(self, 'estimation_service'):
+                self.estimation_service = EstimationService(self.mkv_handler)
+                
+            def on_result(total_chars, line_count):
+                self.after(0, lambda: self._display_token_estimate(model_info, total_chars, line_count))
+                
+            def on_error(e):
+                self.after(0, lambda: self.cost_estimate_label.configure(text=""))
+                
+            started = self.estimation_service.estimate_tokens_async(
+                self.current_file,
+                self.selected_track_id,
+                on_result,
+                on_error
+            )
+            
+            if started and hasattr(self, 'cost_estimate_label'):
+                 self.cost_estimate_label.configure(text="💰 Calculating...")
             
         except Exception as e:
             self.logger.warning(f"Failed to estimate list: {e}")
@@ -736,10 +689,11 @@ class SubAutoApp(ctk.CTk):
     
     def _display_token_estimate(self, model_info, total_chars: int, line_count: int):
         """Display the token estimate based on cached subtitle data."""
-        # Estimate tokens (rough: 4 chars per token)
-        estimated_prompt_tokens = (total_chars // 4) + (line_count * 50)  # Text + prompt overhead
-        estimated_completion_tokens = total_chars // 4  # Similar output size
-        total_estimated_tokens = estimated_prompt_tokens + estimated_completion_tokens
+        if not hasattr(self, 'estimation_service'):
+            from core.estimation_service import EstimationService
+            self.estimation_service = EstimationService(self.mkv_handler)
+            
+        total_estimated_tokens = self.estimation_service.calculate_tokens(total_chars, line_count)
         
         # Format token count
         if total_estimated_tokens >= 1000:
@@ -1133,159 +1087,64 @@ class SubAutoApp(ctk.CTk):
         self._pending_estimates.clear() # Cancel background work
         self._enter_processing_mode()
         
-        # Start in background
-        thread = threading.Thread(target=self._run_translation, daemon=True)
-        thread.start()
-    
-    def _run_translation(self):
-        """Run the translation process in background."""
-        start_time = time.time()
-        lines_count = 0
+        # Intialize orchestrator
+        if not hasattr(self, 'orchestrator'):
+             from core.translation_orchestrator import TranslationOrchestrator
+             self.orchestrator = TranslationOrchestrator(self.mkv_handler)
+             
+        self.orchestrator.set_callbacks(
+             on_progress=self._on_translation_progress,
+             on_complete=self._on_translation_orchestrator_complete,
+             on_error=self._on_translation_error
+        )
+        
+        source_lang = self.source_lang_row.get_value()
+        target_lang = self.target_lang_row.get_value()
         model_used = self.selected_model or "gemini-1.5-flash"
         
-        # Capture current prompt name
-        api_manager = get_api_manager()
-        temp_translator = Translator(model_manager=api_manager)
-        prompt_used = temp_translator.prompt_manager.get_active_prompt_name()
-        
-        try:
-            # Check for resume state
-            resume_state = None
-            if self.state_manager.has_resumable_state(self.current_file):
-                state = self.state_manager.load()
-                if state and state.track_id == self.selected_track_id:
-                    resume_state = state
-            
-            # Extract subtitle
-            extracted_path = self.mkv_handler.extract_subtitle(
-                self.current_file,
-                self.selected_track_id
-            )
-            
-            # Parse subtitle
-            parser = SubtitleParser()
-            lines = parser.load(extracted_path)
-            total_lines = len(lines)
-            lines_count = total_lines
-            
-            # Initialize translator
-            api_manager = get_api_manager()
-            translator = Translator(model_manager=api_manager)
-            self.active_translator = translator  # Store reference
-            success, msg = translator.initialize()
-            
-            if not success:
-                raise RuntimeError(f"Failed to initialize: {msg}")
-            
-            source_lang = self.source_lang_row.get_value()
-            target_lang = self.target_lang_row.get_value()
-            
-            def progress_callback(current, total, status, token_usage: TokenUsage):
-                if self.should_cancel or self.is_paused:
-                    return
-                
-                percent = (current / total) * 100
-                self.after(0, lambda: self.processing_view.set_progress(percent, current, total))
-                
-                # Update status message if provided
-                if status:
-                    # Choose color based on status content
-                    color = None
-                    if "Retrying" in status:
-                        color = COLORS["warning"]
-                    elif "Finalizing" in status:
-                        color = COLORS["success"]
-                    
-                    self.after(0, lambda: self.processing_view.set_status(status, color))
-                
-                self.after(0, lambda: self.processing_view.set_token_stats(
-                    token_usage.prompt_tokens,
-                    token_usage.completion_tokens,
-                    token_usage.total_tokens
-                ))
-            
-            # Create state if not resuming
-            if not resume_state:
-                self.state_manager.create_state(
-                    source_file=self.current_file,
-                    track_id=self.selected_track_id,
-                    total_lines=total_lines,
-                    source_lang=source_lang,
-                    target_lang=target_lang,
-                    model_name=model_used
-                )
-            
-            def state_callback(current, total, status, token_usage):
-                progress_callback(current, total, status, token_usage)
-                if self.should_cancel:
-                    raise KeyboardInterrupt("Cancelled")
-            
-            translations, errors, final_tokens = translator.translate_all(
-                lines=lines,
-                source_lang=source_lang,
-                target_lang=target_lang,
-                batch_size=self.config.batch_size,
-                progress_callback=state_callback,
-                state_manager=self.state_manager,
-                anime_title=getattr(self, 'current_anime_title', None)
-            )
-            
-            # Apply translations
-            parser.apply_translations(translations)
-            
-            # Save translated subtitle
-            input_path = Path(self.current_file)
-            output_dir = self.config.default_output_dir or str(input_path.parent)
-            
-            # Sanitize model name for filename
-            sanitized_model = model_used.replace("/", "_").replace(":", "_").replace("\\", "_")
-            
-            # Use original extension from extracted file to preserve metadata support (e.g. .ass)
-            ext = Path(extracted_path).suffix
-            initial_path = Path(output_dir) / f"{input_path.stem}_{sanitized_model}_translated{ext}"
-            # Capture the actual saved path (parser might correct extension from .srt to .ass)
-            translated_sub_path = parser.save(str(initial_path))
-            
-            # PAUSE HERE - Show review editor instead of immediately merging
-            # Prepare payload for merge step
-            merge_payload = {
-                "current_file": self.current_file,
-                "translated_sub_path": str(translated_sub_path),
-                "output_dir": output_dir,
-                "input_path": input_path,
-                "sanitized_model": sanitized_model,
-                "model_used": model_used,
-                "extracted_path": extracted_path,
-                "lines_count": lines_count,
-                "start_time": start_time,
-                "final_tokens": final_tokens,
-                "api_manager": api_manager,
-                "prompt_used": prompt_used
-            }
-            
-            # Show review editor on main thread
-            self.after(0, lambda: self._show_review_editor(merge_payload))
-            
-        except Exception as e:
-            if self.is_paused or self.should_cancel:
-                return
-            self.after(0, lambda e=e: self._on_translation_error(str(e)))
-        finally:
-            self.active_translator = None
+        self.orchestrator.start_translation(
+             self.current_file,
+             self.selected_track_id,
+             source_lang,
+             target_lang,
+             model_used,
+             self.current_anime_title
+        )
+    
+    def _on_translation_progress(self, current: int, total: int, status: str, token_usage: TokenUsage):
+         percent = (current / total) * 100
+         self.after(0, lambda: self.processing_view.set_progress(percent, current, total))
+         
+         if status:
+             color = None
+             if "Retrying" in status:
+                  color = COLORS["warning"]
+             elif "Finalizing" in status:
+                  color = COLORS["success"]
+             self.after(0, lambda: self.processing_view.set_status(status, color))
+             
+         self.after(0, lambda: self.processing_view.set_token_stats(
+             token_usage.prompt_tokens,
+             token_usage.completion_tokens,
+             token_usage.total_tokens
+         ))
+         
+    def _on_translation_orchestrator_complete(self, payload: dict):
+         """Handles completion from orchestrator before review."""
+         self.after(0, lambda: self._show_review_editor(payload))
     
     def _pause_translation(self):
         """Pause translation."""
         if self.is_paused:
             # Resume
-            if self.active_translator:
-                self.active_translator.is_paused = False
             self._do_resume()
         else:
             # Pause
             self.is_paused = True
             self.should_cancel = True
-            if self.active_translator:
-                self.active_translator.is_paused = True
+            if hasattr(self, 'orchestrator'):
+                 self.orchestrator.pause()
+            
             self.processing_view.set_paused(True)
             self.status_label.configure(text="Paused - progress saved")
     
@@ -1297,7 +1156,6 @@ class SubAutoApp(ctk.CTk):
             self._validate_api()
             return
 
-        
         self._do_resume()
     
     def _do_resume(self):
@@ -1312,64 +1170,73 @@ class SubAutoApp(ctk.CTk):
         
         self._enter_processing_mode()
         
-        thread = threading.Thread(target=self._run_translation, daemon=True)
-        thread.start()
+        if hasattr(self, 'orchestrator'):
+             self.orchestrator.resume()
+             
+             source_lang = self.source_lang_row.get_value()
+             target_lang = self.target_lang_row.get_value()
+             model_used = self.selected_model or "gemini-1.5-flash"
+             anime_title = getattr(self, 'current_anime_title', None)
+             
+             # Call start again to resume background thread
+             self.orchestrator.start_translation(
+                 self.current_file,
+                 self.selected_track_id,
+                 source_lang,
+                 target_lang,
+                 model_used,
+                 anime_title
+             )
     
     def _cancel_translation(self):
         """Cancel translation."""
         self.should_cancel = True
         self.is_processing = False
-        if self.active_translator:
-            self.active_translator.should_stop = True
-            self.active_translator = None
+        if hasattr(self, 'orchestrator'):
+             self.orchestrator.cancel()
+        
         self._exit_processing_mode()
         self.toast.info("Translation cancelled")
     
     def _on_translation_complete(self, summary: dict):
-        """Handle translation completion."""
+        """Handle validation after merge complete."""
         self.is_processing = False
         self.processing_view.set_completed()
         
-        tokens = summary["tokens"]
-        self.toast.success(f"Translation complete! {tokens.total_tokens:,} tokens used")
-        
-        # Store summary data for re-opening
+        tokens = summary.get("tokens")
+        if tokens:
+             self.toast.success(f"Translation complete! {tokens.total_tokens:,} tokens used")
+        else:
+             self.toast.success("Translation complete!")
         
         # Mark all steps complete
-        # 5 = len(steps) + 1, allowed by updated HorizontalStepper
         self.stepper.set_step(5)
         self.last_summary_data = {
-            "output_path": summary["output_path"],
-            "lines_translated": summary["lines_translated"],
-            "model_used": summary["model_used"],
-            "duration_seconds": summary["duration_seconds"],
-            "removed_old_subs": summary["removed_old_subs"],
-            "prompt_tokens": tokens.prompt_tokens,
-            "completion_tokens": tokens.completion_tokens,
-            "total_tokens": tokens.total_tokens,
-            "estimated_cost": summary.get("estimated_cost"),
+            "output_path": summary.get("output_path", ""),
+            "lines_translated": summary.get("lines_translated", 0),
+            "model_used": summary.get("model_used", ""),
+            "duration_seconds": summary.get("duration_seconds", 0),
+            "removed_old_subs": summary.get("removed_old_subs", False),
+            "prompt_tokens": tokens.prompt_tokens if tokens else 0,
+            "completion_tokens": tokens.completion_tokens if tokens else 0,
+            "total_tokens": tokens.total_tokens if tokens else 0,
+            "estimated_cost": summary.get("estimated_cost", 0),
             "provider": self.config.provider
         }
-        
-        # Show the "Show Summary" button
-        # Button will be packed in _exit_processing_mode
 
         # Show summary
         self.summary_view = SummaryWindow(
             self,
             **self.last_summary_data,
-            on_open_folder=lambda: os.startfile(Path(summary["output_path"]).parent),
+            on_open_folder=lambda: os.startfile(Path(summary["output_path"]).parent) if summary.get("output_path") else None,
             on_close=self._close_summary
         )
         self.summary_view.grid(row=1, column=0, rowspan=2, sticky="nsew")
         self.summary_view.lift()
         
-        # Reset state
-        # self.token_accumulator = TokenUsage() # This is not used here, token_accumulator is managed by Translator
         if self.state_manager:
-            self.state_manager.clear() # Use clear() instead of clear_state()
+            self.state_manager.clear()
             
-        # Exit processing mode after delay
         self.after(2000, self._exit_processing_mode)
     
     def _close_summary(self):
@@ -1378,7 +1245,6 @@ class SubAutoApp(ctk.CTk):
             self.summary_view.destroy()
             self.summary_view = None
             
-        # Auto-reset after closing summary (User Request)
         self._reset_app()
     
     def _on_translation_error(self, error: str):
@@ -1387,7 +1253,6 @@ class SubAutoApp(ctk.CTk):
         self.processing_view.set_error(error[:50])
         self.toast.error(f"Translation failed: {error}")
         
-        # Exit processing mode after delay
         self.after(3000, self._exit_processing_mode)
     
     def _show_review_editor(self, payload: dict):
