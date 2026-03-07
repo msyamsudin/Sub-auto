@@ -237,9 +237,20 @@ class ProcessingView(ctk.CTkFrame):
         # self.card.configure(border_color=COLORS["error"])
         self.pause_btn.pack_forget()
 
-    def set_status(self, message: str, color: Optional[str] = None):
-        """Set a custom status message."""
-        if not color:
-            color = COLORS["step_active"]
-        self.status_label.configure(text=message, text_color=color)
-        self.update_idletasks()
+    def update_progress_summary(
+        self, 
+        current: int, 
+        total: int, 
+        status: Optional[str] = None, 
+        status_color: Optional[str] = None,
+        tokens: Optional[any] = None
+    ):
+        """Unified method to update all progress aspects at once."""
+        percent = (current / total * 100) if total > 0 else 0
+        self.set_progress(percent, current, total)
+        
+        if status:
+            self.set_status(status, status_color)
+            
+        if tokens:
+            self.set_token_stats(tokens.prompt_tokens, tokens.completion_tokens, tokens.total_tokens)

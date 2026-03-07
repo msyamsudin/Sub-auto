@@ -29,6 +29,7 @@ from .history_view import HistoryView
 from .views.file_selection_view import FileSelectionView
 from .views.configuration_view import ConfigurationView
 from .views.footer_view import FooterView
+from .views.review_view import ReviewView
 
 from core.config_manager import get_config, ConfigManager
 from core.mkv_handler import MKVHandler, SubtitleTrack
@@ -38,6 +39,7 @@ from core.state_manager import get_state_manager, StateManager
 from core.history_manager import get_history_manager, HistoryEntry
 from core.logger import get_logger, Logger
 from core.utils import extract_anime_title
+from core.finalization_service import FinalizationService
 
 from core.version import __version__
 
@@ -111,8 +113,9 @@ class SubAutoApp(ctk.CTk):
             "und": "English",
         }
         
-        # Initialize MKV handler
+        # Initialize MKV handler and services
         self._init_mkv_handler()
+        self.finalization_service = FinalizationService(self.mkv_handler)
         
         # Build UI
         self._setup_ui()
@@ -245,21 +248,8 @@ class SubAutoApp(ctk.CTk):
         # Step 2: Configuration
         self.step_frames[2] = self._create_step2_frame()
         
-        # Step 3: Progress/Action (Now merged into Configuration or separate?)
-        # Logic change: 
-        # Old Step 3 was "Translation Options".
-        # New Step 3 is "Processing" (actually ProcessingView handles this).
-        # New Step 4 is "Review".
-        
-        # Let's map:
-        # Step 1: File
-        # Step 2: Tracks + Options (Configuration)
-        # Step 3: Processing (Placeholder for now, will switch to processing view)
-        # Step 4: Review (Summary/Editor)
-        
-        # Implementation Detail:
-        # I will keep _create_step3 for "Processing" placeholder or just use the ProcessingView.
-        # But for the stepper navigation, "Translation" is step 3.
+        # Step 4: Review
+        self.step_frames[4] = self._create_step4_frame()
         
         pass 
 
@@ -328,6 +318,15 @@ class SubAutoApp(ctk.CTk):
         self.track_items = view.track_items
         
         return view
+
+    def _create_step4_frame(self):
+        """Create Frame for Step 4: Review."""
+        view = ReviewView(
+            self.content_area,
+            on_approve=self._on_review_approved,
+            on_discard=self._on_review_discarded
+        )
+        return view
     
     def _create_footer(self):
         """Create footer with action buttons (FULL WIDTH)."""
@@ -352,18 +351,20 @@ class SubAutoApp(ctk.CTk):
     
     def _update_step_states(self):
         """Update UI states based on current progress."""
-        # Sync with global ModelManager state (e.g. if validated in settings)
         manager = get_api_manager()
+        self._sync_api_state(manager)
+        self._update_stepper_logic(manager)
+        self._update_action_buttons()
+        self._update_token_estimate()
+    
+    def _sync_api_state(self, manager):
+        """Sync API connection state and model selection."""
+        # Sync with global ModelManager state (e.g. if validated in settings)
         if manager.is_configured:
             self.api_validated = True
             self.selected_model = manager.selected_model
 
-        has_file = self.current_file is not None
-        has_track = self.selected_track_id is not None
-        api_ready = self.api_validated
-        
-        # Update model dropdown and status in Step 2
-        if api_ready:
+        if self.api_validated:
             display_names = manager.get_model_display_names()
             if display_names:
                 self.model_dropdown.configure(values=display_names, state="normal")
@@ -371,10 +372,7 @@ class SubAutoApp(ctk.CTk):
                 if info:
                     self.model_dropdown.set(info.short_name)
             
-            self.model_status.configure(
-                text="✓ Connected",
-                text_color=COLORS["success"]
-            )
+            self.model_status.configure(text="✓ Connected", text_color=COLORS["success"])
             if hasattr(self, "validate_btn"):
                 self.validate_btn.grid_forget()
         else:
@@ -382,9 +380,22 @@ class SubAutoApp(ctk.CTk):
             if not self.is_validating:
                 self.model_status.configure(text="⚠ Not connected", text_color=COLORS["text_muted"])
                 self.model_dropdown.set("Not connected")
-        
+
+        # Update title bar API status
+        if not self.is_validating:
+            display_model = self.selected_model
+            info = manager.get_selected_model_info()
+            if info:
+                display_model = info.short_name
+            self.title_bar.set_api_status(self.api_validated, display_model or "")
+
+    def _update_stepper_logic(self, manager):
+        """Update stepper descriptions and completion marks."""
+        has_file = self.current_file is not None
+        has_track = self.selected_track_id is not None
+        api_ready = self.api_validated
         completed_indices = []
-        
+
         # Step 1: File Selection
         if has_file:
             completed_indices.append(1)
@@ -393,76 +404,37 @@ class SubAutoApp(ctk.CTk):
             self.stepper.update_step_description(1, f"{path.name} ({size:.2f} GB)")
         else:
             self.stepper.clear_step_description(1)
-        
+
         # Step 2: Configuration
         if has_file and has_track:
-            # Find track info
             track_info = "Track Selected"
             for track in self.subtitle_tracks:
                 if track.track_id == self.selected_track_id:
                     track_info = f"Track {track.track_id} - {track.language.upper()}"
                     break
             
-            # Show track info and if API is ready
             status_text = track_info
             if api_ready:
                 status_text += f"\nModel: {self.selected_model or 'Default'}"
                 completed_indices.append(2)
-            else:
-                 pass # Step 2 not complete until API ready/connected?
-                 
             self.stepper.update_step_description(2, status_text)
         else:
             self.stepper.clear_step_description(2)
-            
-        # Update completed steps
-        self.stepper.set_completed_steps(completed_indices)
-        
-        # Step 3: Active after track selected & API ready
-        # This is handled by "Start" button mainly
-        
-        # Update start button
-        can_start = has_file and has_track and api_ready
-        if hasattr(self, 'start_btn'):
-            self.start_btn.configure(state="normal" if can_start else "disabled")
-        
-        # Update title bar API status
-        if not self.is_validating:
-            display_model = self.selected_model
-            info = manager.get_selected_model_info()
-            if info:
-                display_model = info.short_name
-                
-            self.title_bar.set_api_status(api_ready, display_model or "")
-        
+
         # Step 3: Translation (Processing)
-        # 1. Processing is active OR
-        # 2. We are waiting for review (merge_payload exists) OR
-        # 3. We are done (active_translator is None but we finished something?)
-        # Let's simplify: Step 3 is "active" if we are processing. 
-        # It is "complete" if we are in review or done.
-        
         in_review = hasattr(self, 'merge_payload') and self.merge_payload is not None
-        
         if self.is_processing or in_review:
              completed_indices.append(3)
         
-        # Step 4: Review
-        if in_review:
-             # If we are in review, Step 4 is active.
-             # If we finished review (merged), then Step 4 is complete.
-             # But if merged, merge_payload is cleared. 
-             # So we need another flag or check if we just finished.
-             # Actually, if we are "done" (summary showing), Steps 1-4 should be green?
-             pass 
-             
-        # For better UX, let's trust the flow.
-        # If we are showing summary, we are likely at the end.
-        
-        # Update completed steps
+        # Sync with stepper
         self.stepper.set_completed_steps(completed_indices)
+
+    def _update_action_buttons(self):
+        """Enable/disable action buttons in footer."""
+        has_file = self.current_file is not None
+        has_track = self.selected_track_id is not None
+        api_ready = self.api_validated
         
-        # Update start button
         can_start = has_file and has_track and api_ready and not self.is_processing
         if hasattr(self, 'start_btn'):
             self.start_btn.configure(state="normal" if can_start else "disabled")
@@ -929,21 +901,21 @@ class SubAutoApp(ctk.CTk):
         )
     
     def _on_translation_progress(self, current: int, total: int, status: str, token_usage: TokenUsage):
-         percent = (current / total) * 100
-         self.after(0, lambda: self.processing_view.set_progress(percent, current, total))
-         
+         """Handle translation progress callback."""
+         status_color = None
          if status:
-             color = None
              if "Retrying" in status:
-                  color = COLORS["warning"]
+                  status_color = COLORS["warning"]
              elif "Finalizing" in status:
-                  color = COLORS["success"]
-             self.after(0, lambda: self.processing_view.set_status(status, color))
-             
-         self.after(0, lambda: self.processing_view.set_token_stats(
-             token_usage.prompt_tokens,
-             token_usage.completion_tokens,
-             token_usage.total_tokens
+                  status_color = COLORS["success"]
+         
+         # Update processing view directly
+         self.after(0, lambda: self.processing_view.update_progress_summary(
+             current=current,
+             total=total,
+             status=status,
+             status_color=status_color,
+             tokens=token_usage
          ))
          
     def _on_translation_orchestrator_complete(self, payload: dict):
@@ -1076,224 +1048,43 @@ class SubAutoApp(ctk.CTk):
         """Show the subtitle review editor."""
         self.is_processing = False
         self._exit_processing_mode()
-        
-        # Store payload for later use
         self.merge_payload = payload
         
-        # Determine which editor to show
-        # Default to new panel if not specified in config (or add to config later)
-        use_new_review = getattr(self, "use_new_review_panel", True)
-        
-        # Clean up old frame
-        if 4 in self.step_frames:
-            try:
-                for widget in self.step_frames[4].winfo_children():
-                    widget.destroy()
-            except:
-                pass
-        else:
-            self.step_frames[4] = ctk.CTkFrame(self.content_area, fg_color="transparent")
-            self.step_frames[4].grid_columnconfigure(0, weight=1)
-            self.step_frames[4].grid_rowconfigure(0, weight=1)
-
-        # Create container for toggle
-        container = self.step_frames[4]
-        
-        # Header with Toggle
-        header_frame = ctk.CTkFrame(container, fg_color="transparent")
-        header_frame.pack(fill="x", pady=(0, SPACING["sm"]))
-        
-        ctk.CTkLabel(header_frame, text="Review Subtitles", **get_label_style("heading")).pack(side="left")
-        
-        # Toggle Switch
-        def toggle_editor():
-            self.use_new_review_panel = not getattr(self, "use_new_review_panel", True)
-            self._show_review_editor(payload) # Reload
-            
-        current_mode = "Modern UI" if use_new_review else "Classic Editor"
-        toggle_btn = ctk.CTkButton(
-            header_frame, 
-            text=f"Switch to {('Classic' if use_new_review else 'Modern')}",
-            command=toggle_editor,
-            width=120,
-            height=24,
-            **get_button_style("ghost")
-        )
-        toggle_btn.pack(side="right")
-        
-        # Editor Container
-        editor_container = ctk.CTkFrame(container, fg_color="transparent")
-        editor_container.pack(fill="both", expand=True)
-
-        if use_new_review:
-            from .components import SubtitleReviewPanel
-            self.editor_view = SubtitleReviewPanel(
-                editor_container,
-                subtitle_path=payload["translated_sub_path"],
-                on_approve=self._on_review_approved,
-                on_discard=self._on_review_discarded
-            )
-        else:
-            self.editor_view = SubtitleEditor(
-                editor_container,
-                subtitle_path=payload["translated_sub_path"],
-                on_approve=self._on_review_approved,
-                on_discard=self._on_review_discarded
-            )
-            
-        self.editor_view.pack(fill="both", expand=True)
+        # Update view
+        view = self.step_frames[4]
+        view.show_payload(payload)
         
         # Update Stepper
-        self.stepper.set_step(4)
-        self._update_step_states()
         self._show_step(4)
-        
         self.toast.info("Translation complete! Please review the subtitles.")
     
     def _on_review_approved(self, content: str):
         """Handle review approval - save edited content and merge."""
         try:
             # Save edited content back to file
-            with open(self.merge_payload["translated_sub_path"], 'w', encoding='utf-8') as f:
+            with open(self.merge_payload["translated_sub_path"], 'wt', encoding='utf-8') as f:
                 f.write(content)
             
-            # Proceed with merge
-            self.toast.info("Merging subtitle into video...")
-            self._finalize_merge(self.merge_payload)
-            
-        except Exception as e:
-            self.toast.error(f"Failed to save changes: {str(e)}")
-            self.logger.error(f"Review approval error: {e}")
-    
-    def _on_review_discarded(self):
-        """Handle review discard - clean up and reset."""
-        try:
-            # Clean up translated subtitle file
-            translated_sub_path = Path(self.merge_payload["translated_sub_path"])
-            if translated_sub_path.exists():
-                translated_sub_path.unlink()
-            
-            # Clean up extracted subtitle file
-            extracted_path = self.merge_payload.get("extracted_path")
-            if extracted_path and Path(extracted_path).exists():
-                Path(extracted_path).unlink()
-            
-            # Clear state
-            self.state_manager.clear()
-            self.merge_payload = None
-            
-            # Go back to Step 2 (Configuration)
-            self._on_step_change(2)
-            self.toast.info("Translation discarded")
-            
-        except Exception as e:
-            self.logger.warning(f"Cleanup error during discard: {e}")
-    
-    def _finalize_merge(self, payload: dict):
-        """Finalize the merge process after review approval."""
-        try:
-            # Merge into MKV
-            input_path = payload["input_path"]
-            output_dir = payload["output_dir"]
-            sanitized_model = payload["sanitized_model"]
-            model_used = payload["model_used"]
-            
-            output_mkv_path = Path(output_dir) / f"{input_path.stem}_{sanitized_model}_translated.mkv"
-            
-            self.mkv_handler.replace_subtitle(
-                mkv_path=payload["current_file"],
-                subtitle_path=payload["translated_sub_path"],
-                output_path=str(output_mkv_path),
-                language="ind",
-                track_name=f"Indonesian ({model_used})",
-                remove_existing_subs=self.remove_old_subs
+            # Finalize merge via service
+            self.toast.info("Finalizing merge into video...")
+            summary = self.finalization_service.finalize_merge(
+                self.merge_payload, 
+                remove_old_subs=self.remove_old_subs
             )
-            
-            # Clean up temporary files
-            try:
-                # Remove extracted subtitle file
-                extracted_path = payload.get("extracted_path")
-                if extracted_path and Path(extracted_path).exists():
-                    Path(extracted_path).unlink()
-                    self.logger.info(f"Cleaned up: {extracted_path}")
-                
-                # Remove translated subtitle file
-                translated_sub_path = Path(payload["translated_sub_path"])
-                if translated_sub_path.exists():
-                    translated_sub_path.unlink()
-                    self.logger.info(f"Cleaned up: {translated_sub_path}")
-            except Exception as cleanup_error:
-                self.logger.warning(f"Failed to clean up temp files: {cleanup_error}")
-            
-            # Done
-            duration = time.time() - payload["start_time"]
-            
-            # Save to history
-            try:
-                final_tokens = payload.get("final_tokens", TokenUsage())
-                
-                # Calculate cost estimation if using OpenRouter
-                estimated_cost = None
-                if self.config.provider == "openrouter":
-                    api_manager = payload["api_manager"]
-                    model_info = api_manager.get_selected_model_info()
-                    if model_info:
-                        estimated_cost = model_info.calculate_cost(
-                            final_tokens.prompt_tokens,
-                            final_tokens.completion_tokens
-                        )
-
-                entry = HistoryEntry(
-                    source_file=str(payload["current_file"]),
-                    source_file_name=payload["input_path"].name,
-                    output_file=str(output_mkv_path),
-                    track_id=payload.get("track_id", -1),
-                    source_lang=payload.get("source_lang", ""),
-                    target_lang="ind",
-                    model_name=model_used,
-                    provider=self.config.provider,
-                    prompt_name=payload.get("prompt_used", ""),
-                    total_lines=payload.get("total_lines", 0),
-                    lines_translated=payload.get("lines_count", 0),
-                    duration_seconds=duration,
-                    prompt_tokens=final_tokens.prompt_tokens,
-                    completion_tokens=final_tokens.completion_tokens,
-                    estimated_cost=estimated_cost,
-                    status="completed"
-                )
-                self.history_manager.add_entry(entry)
-            except Exception as history_error:
-                self.logger.warning(f"Failed to save history: {history_error}")
-
-            self.state_manager.clear()
-            
-            # Calculate cost estimation if using OpenRouter
-            estimated_cost = None
-            if self.config.provider == "openrouter":
-                api_manager = payload["api_manager"]
-                model_info = api_manager.get_selected_model_info()
-                if model_info:
-                    final_tokens = payload["final_tokens"]
-                    estimated_cost = model_info.calculate_cost(
-                        final_tokens.prompt_tokens,
-                        final_tokens.completion_tokens
-                    )
-            
-            summary = {
-                "output_path": str(output_mkv_path),
-                "lines_translated": payload["lines_count"],
-                "model_used": model_used,
-                "duration_seconds": duration,
-                "removed_old_subs": self.remove_old_subs,
-                "tokens": payload["final_tokens"],
-                "estimated_cost": estimated_cost
-            }
-            
             self._on_translation_complete(summary)
             
         except Exception as e:
             self.toast.error(f"Merge failed: {str(e)}")
-            self.logger.error(f"Merge error: {e}")
+            self.logger.error(f"Finalize merge error: {e}")
+            
+    def _on_review_discarded(self):
+        """Handle review discard - clean up and reset."""
+        self.finalization_service.cleanup_temp_files(self.merge_payload) 
+        if self.state_manager:
+            self.state_manager.clear()
+        self.merge_payload = None
+        self._on_step_change(2) # Back to config
+        self.toast.info("Translation discarded")
     
     
     def _check_resumable_state(self):
