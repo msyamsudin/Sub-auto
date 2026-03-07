@@ -179,11 +179,3 @@ def get_api_manager() -> ModelManager:
     return _model_manager
 
 
-def validate_and_save_api_key(api_key: str) -> APIValidationResult:
-    """Validate API key (legacy bridge)."""
-    # This is slightly broken in new design as validation depends on provider
-    # But usually this is called when user enters OpenRouter key
-    manager = get_api_manager()
-    manager.config.openrouter_api_key = api_key
-    manager.config.provider = "openrouter"
-    return manager.validate_connection()

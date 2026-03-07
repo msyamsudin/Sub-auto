@@ -1308,8 +1308,11 @@ class APIKeyPanel(ctk.CTkFrame):
     def _do_validation(self, api_key: str):
         """Perform API validation (runs in background thread)."""
         try:
-            from core.translator import validate_and_save_api_key
-            result = validate_and_save_api_key(api_key)
+            from core.model_manager import get_api_manager
+            manager = get_api_manager()
+            manager.config.openrouter_api_key = api_key
+            manager.config.provider = "openrouter"
+            result = manager.validate_connection()
             
             # Update UI on main thread
             self.after(0, lambda: self._handle_validation_result(result))

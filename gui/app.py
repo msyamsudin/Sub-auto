@@ -26,11 +26,14 @@ from .settings_dialog import SettingsDialog
 from .toast import ToastManager
 from .processing_view import ProcessingView
 from .history_view import HistoryView
+from .views.file_selection_view import FileSelectionView
+from .views.configuration_view import ConfigurationView
+from .views.footer_view import FooterView
 
 from core.config_manager import get_config, ConfigManager
 from core.mkv_handler import MKVHandler, SubtitleTrack
 from core.subtitle_parser import SubtitleParser
-from core.translator import Translator, get_api_manager, TokenUsage, validate_and_save_api_key
+from core.translator import Translator, get_api_manager, TokenUsage
 from core.state_manager import get_state_manager, StateManager
 from core.history_manager import get_history_manager, HistoryEntry
 from core.logger import get_logger, Logger
@@ -298,224 +301,53 @@ class SubAutoApp(ctk.CTk):
     
     def _create_step1_frame(self):
         """Create Frame for Step 1: File Selection."""
-        frame = ctk.CTkFrame(self.content_area, fg_color="transparent")
-        frame.grid_columnconfigure(0, weight=1)
-        
-        # Header
-        header = ctk.CTkLabel(
-            frame, 
-            text="Select Video File", 
-            **get_label_style("heading")
+        view = FileSelectionView(
+            self.content_area,
+            on_file_selected=self._on_file_selected
         )
-        header.pack(anchor="w", pady=(0, SPACING["lg"]))
-        
-        # File Drop Zone
-        self.file_drop = FileDropZone(
-            frame,
-            on_file_selected=self._on_file_selected,
-            height=200
-        )
-        self.file_drop.pack(fill="x", pady=(0, SPACING["xl"]))
-        
-        # Recent Files (Placeholder) or Instructions
-        info_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        info_frame.pack(fill="x")
-        
-        ctk.CTkLabel(
-            info_frame,
-            text="💡 Supported formats: .mkv (Matroska Video)",
-            **get_label_style("muted")
-        ).pack(anchor="w")
-        
-        return frame
+        self.file_drop = view.file_drop
+        return view
 
     def _create_step2_frame(self):
         """Create Frame for Step 2: Configuration (Tracks + Options)."""
-        frame = ctk.CTkFrame(self.content_area, fg_color="transparent")
-        frame.grid_columnconfigure(0, weight=1)
-        frame.grid_rowconfigure(0, weight=1)
-        
-        # Split into Left (Tracks) and Right (Options)
-        # Or Top (Tracks) and Bottom (Options)?
-        # Let's use Top/Bottom split for vertical flow in this step
-        
-        # === subtitle tracks section ===
-        tracks_section = CollapsibleFrame(frame, title="Subtitle Tracks")
-        tracks_section.pack(fill="x", pady=(0, SPACING["md"]))
-        
-        content = tracks_section.content_frame
-        
-        self.tracks_frame = ctk.CTkFrame(content, fg_color="transparent")
-        self.tracks_frame.pack(fill="x")
-        self.tracks_frame.grid_columnconfigure(0, weight=1)
-        
-        self.no_tracks_label = ctk.CTkLabel(
-            self.tracks_frame,
-            text="Select an MKV file to see subtitle tracks",
-            **get_label_style("muted")
-        )
-        self.no_tracks_label.grid(row=0, column=0, pady=SPACING["lg"])
-        
-        self.track_items: List[TrackListItem] = []
-        
-        # === Translation Options Section ===
-        options_section = CollapsibleFrame(frame, title="Translation Settings")
-        options_section.pack(fill="x", pady=(0, SPACING["md"]))
-        
-        opts_content = options_section.content_frame
-        opts_content.grid_columnconfigure((0, 1), weight=1)
-        
-        # Source language
-        self.source_lang_row = SettingsRow(
-            opts_content,
-            label="From",
-            input_type="dropdown",
-            options=["English", "Japanese", "Korean", "Chinese", "Arabic", "Auto-detect"],
-            default_value="English"
-        )
-        self.source_lang_row.grid(row=0, column=0, sticky="ew", padx=(0, SPACING["sm"]), pady=SPACING["xs"])
-        
-        # Target language
-        self.target_lang_row = SettingsRow(
-            opts_content,
-            label="To",
-            input_type="dropdown",
-            options=["Indonesian"],
-            default_value="Indonesian"
-        )
-        self.target_lang_row.grid(row=0, column=1, sticky="ew", padx=(SPACING["sm"], 0), pady=SPACING["xs"])
-        
-        # Model selection row
-        model_frame = ctk.CTkFrame(opts_content, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
-        model_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(SPACING["md"], 0))
-        model_frame.grid_columnconfigure(2, weight=1)
-        
-        model_label = ctk.CTkLabel(
-            model_frame,
-            text="Model:",
-            **get_label_style("body")
-        )
-        model_label.grid(row=0, column=0, padx=SPACING["md"], pady=SPACING["md"])
-        
-        self.model_dropdown = ctk.CTkOptionMenu(
-            model_frame,
-            values=["Not connected"],
-            command=self._on_model_change,
-            fg_color=COLORS["bg_light"],
-            button_color=COLORS["bg_medium"],
-            button_hover_color=COLORS["border"],
-            dropdown_fg_color=COLORS["bg_dark"],
-            dropdown_hover_color=COLORS["bg_light"],
-            corner_radius=RADIUS["md"],
-            width=200,
-            state="disabled"
-        )
-        self.model_dropdown.grid(row=0, column=1, padx=SPACING["sm"], pady=SPACING["md"])
-        
-        # Status indicator
-        status_frame = ctk.CTkFrame(model_frame, fg_color="transparent")
-        status_frame.grid(row=0, column=2, sticky="w", padx=SPACING["sm"])
-        
-        self.model_status = ctk.CTkLabel(
-            status_frame,
-            text="⚠ Not connected",
-            text_color=COLORS["text_muted"],
-            font=(FONTS["family"], FONTS["small_size"])
-        )
-        self.model_status.pack(side="left")
-
-        # Cost estimate label (inline)
-        self.cost_estimate_label = ctk.CTkLabel(
-            status_frame,
-            text="",
-            font=(FONTS["family"], FONTS["small_size"]),
-            text_color=COLORS["success"]
-        )
-        self.cost_estimate_label.pack(side="left", padx=(SPACING["sm"], 0))
-        
-        # Connect button
-        self.validate_btn = ctk.CTkButton(
-            model_frame,
-            text="Connect",
-            width=80,
-            command=self._validate_api,
-            **get_button_style("secondary")
+        view = ConfigurationView(
+            self.content_area,
+            on_model_change=self._on_model_change,
+            on_validate_api=self._validate_api
         )
         
-        # === Footer Actions for Step 2 ===
-        # Add a "Start Processing" button directly here?
-        # Or rely on the global footer (which I haven't refactored yet).
-        # Global footer is safer for now.
+        # Link references for backward compatibility with app.py methods
+        self.tracks_frame = view.tracks_frame
+        self.no_tracks_label = view.no_tracks_label
+        self.source_lang_row = view.source_lang_row
+        self.target_lang_row = view.target_lang_row
+        self.model_dropdown = view.model_dropdown
+        self.model_status = view.model_status
+        self.cost_estimate_label = view.cost_estimate_label
+        self.validate_btn = view.validate_btn
+        self.track_items = view.track_items
         
-        return frame
+        return view
     
     def _create_footer(self):
         """Create footer with action buttons (FULL WIDTH)."""
-        # Footer container at the bottom of the main window
-        self.footer_frame = ctk.CTkFrame(self, fg_color="transparent", height=60)
-        self.footer_frame.grid(row=2, column=0, sticky="ew", padx=SPACING["md"], pady=(0, SPACING["md"]))
-        self.footer_frame.grid_columnconfigure(0, weight=1)
-        
-        # Separator (optional, maybe inside footer frame)
-        separator = ctk.CTkFrame(self.footer_frame, height=2, fg_color=COLORS["border"])
-        separator.pack(fill="x", pady=(0, SPACING["sm"]))
-        
-        # Content frame for buttons/status inside footer
-        content = ctk.CTkFrame(self.footer_frame, fg_color="transparent")
-        content.pack(fill="x", expand=True)
-        content.grid_columnconfigure(0, weight=1)
-        
-        # Left side - status
-        self.status_label = ctk.CTkLabel(
-            content,
-            text="",
-            **get_label_style("muted")
+        self.footer = FooterView(
+            self,
+            on_start=self._start_translation,
+            on_reset=self._reset_app,
+            on_resume=self._resume_translation,
+            on_show_summary=self._show_last_summary
         )
-        self.status_label.grid(row=0, column=0, sticky="w")
+        self.footer.grid(row=2, column=0, sticky="ew", padx=SPACING["md"], pady=(0, SPACING["md"]))
         
-        # Right side - buttons
-        buttons = ctk.CTkFrame(content, fg_color="transparent")
-        buttons.grid(row=0, column=1, sticky="e")
+        # Link references for backward compatibility
+        self.start_btn = self.footer.start_btn
+        self.resume_btn = self.footer.resume_btn
+        self.status_label = self.footer.status_label
+        self.reset_btn = self.footer.reset_btn
+        self.show_summary_btn = self.footer.summary_btn
         
-        self.reset_btn = ctk.CTkButton(
-            buttons,
-            text="Reset",
-            width=80,
-            command=self._reset_app,
-            **get_button_style("secondary")
-        )
-        self.reset_btn.pack(side="left", padx=(0, SPACING["lg"]))
-        
-        self.show_summary_btn = ctk.CTkButton(
-            buttons,
-            text="Show Summary",
-            width=120,
-            command=self._show_last_summary,
-            **get_button_style("secondary")
-        )
-        self.show_summary_btn.pack(side="left", padx=(0, SPACING["lg"]))
-        self.show_summary_btn.pack_forget()
-
-        self.start_btn = ctk.CTkButton(
-            buttons,
-            text="Start Translation",
-            width=150,
-            font=(FONTS["family"], FONTS["subheading_size"], "bold"),
-            command=self._start_translation,
-            **get_button_style("info")
-        )
-        self.start_btn.pack(side="left")
-        
-        # Resume button (hidden by default)
-        self.resume_btn = ctk.CTkButton(
-            buttons,
-            text="Resume",
-            width=120,
-            command=self._resume_translation,
-            **get_button_style("success")
-        )
-        
-        # Initial button state
+        # Initial state
         self.start_btn.configure(state="disabled")
     
     def _update_step_states(self):
@@ -817,54 +649,39 @@ class SubAutoApp(ctk.CTk):
         if not self.current_file or not self.mkv_handler:
             return
         
-        # Clear existing tracks
-        for item in self.track_items:
-            item.destroy()
-        self.track_items.clear()
         self.selected_track_id = None
         
         try:
             self.subtitle_tracks = self.mkv_handler.get_subtitle_tracks(self.current_file)
             
-            if not self.subtitle_tracks:
-                self.no_tracks_label.configure(
-                    text="No subtitle tracks found",
-                    text_color=COLORS["warning"]
-                )
-                self.no_tracks_label.grid()
-                return
+            # Filter tracks (optional, but good to keep logic here)
+            filtered_tracks = [t for t in self.subtitle_tracks if t.file_extension in ['.srt', '.ass']]
             
-            # Hide placeholder
-            self.no_tracks_label.grid_remove()
+            # Update View
+            view = self.step_frames[2]
+            view.update_tracks(
+                tracks=filtered_tracks,
+                selected_id=None,
+                on_track_select=self._on_track_select
+            )
             
-            # Create track items
-            for i, track in enumerate(self.subtitle_tracks):
-                if track.file_extension not in ['.srt', '.ass']:
-                    continue
-                
-                item = TrackListItem(
-                    self.tracks_frame,
-                    track_id=track.track_id,
-                    track_name=track.track_name,
-                    language=track.language,
-                    codec=track.codec,
-                    is_default=track.default_track,
-                    on_select=self._on_track_select
-                )
-                item.grid(row=i, column=0, sticky="ew", pady=SPACING["xs"])
-                self.track_items.append(item)
+            if not filtered_tracks:
+                 view.no_tracks_label.configure(text="No supported subtitle tracks found", text_color=COLORS["warning"])
+                 view.no_tracks_label.grid()
+                 return
             
             # Auto-select first track
             if self.track_items:
-                # Select() will trigger _on_track_select which calls _update_step_states()
                 self.track_items[0].select()
                 
         except Exception as e:
-            self.no_tracks_label.configure(
+            view = self.step_frames[2]
+            view.set_model_status(f"Error: {str(e)}", COLORS["error"])
+            view.no_tracks_label.configure(
                 text=f"Error: {str(e)}",
                 text_color=COLORS["error"]
             )
-            self.no_tracks_label.grid()
+            view.no_tracks_label.grid()
             self.toast.error(f"Failed to load tracks: {str(e)}")
     
     def _on_track_select(self, track_id: int, is_selected: bool):

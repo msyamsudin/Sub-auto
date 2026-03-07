@@ -712,9 +712,11 @@ class SettingsDialog(ctk.CTkFrame):
     def _do_validate_or(self, api_key):
         """Background validation for OpenRouter."""
         try:
-            # Import locally to avoid circulars if any
-            from core.translator import validate_and_save_api_key
-            result = validate_and_save_api_key(api_key)
+            from core.model_manager import get_api_manager
+            manager = get_api_manager()
+            # Temporarily update the key in the shared config object for validation
+            manager.config.openrouter_api_key = api_key
+            result = manager.validate_connection(provider_name="openrouter")
             self.after(0, lambda: self._on_or_validate_result(result))
         except Exception as e:
             self.after(0, lambda: self._on_or_validate_result(None, str(e)))

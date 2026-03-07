@@ -14,7 +14,7 @@ from .logger import get_logger
 from .llm_provider import PolicyViolationError
 from .style_handler import StyleHandler
 from .retry_handler import NetworkRetryHandler, RetryConfig
-from .model_manager import ModelManager, get_api_manager, validate_and_save_api_key
+from .model_manager import ModelManager, get_api_manager
 from .prompt_manager import PromptManager
 
 # Generic type for return values
