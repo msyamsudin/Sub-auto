@@ -31,13 +31,14 @@ class TranslationController:
             elif "Finalizing" in status:
                 status_color = COLORS["success"]
         
-        self.after_func(0, lambda: self.processing_view.update_progress_summary(
-            current=current,
-            total=total,
-            status=status,
-            status_color=status_color,
-            tokens=token_usage
-        ))
+        if self.processing_view:
+            self.after_func(0, lambda: self.processing_view.update_progress_summary(
+                current=current,
+                total=total,
+                status=status,
+                status_color=status_color,
+                tokens=token_usage
+            ))
 
     def on_orchestrator_complete(self, payload: dict):
         """Handle completion from orchestrator before review."""

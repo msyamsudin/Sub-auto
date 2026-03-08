@@ -181,6 +181,7 @@ class SubAutoApp(ctk.CTk):
 
         # Processing View
         self.processing_view = ProcessingView(self.content_area, logger_instance=self.logger, on_pause=self._pause_translation, on_cancel=self._cancel_translation)
+        self.translation_controller.processing_view = self.processing_view
         
         # Initialize Step Fragments
         view1 = self._create_step1_fragment()
@@ -415,7 +416,7 @@ class SubAutoApp(ctk.CTk):
             filtered_tracks = self.subtitle_service.load_tracks(self.app_state.current_file)
             
             # Update View
-            view = self.step_frames[2]
+            view = self.step_frames[1]
             view.update_tracks(
                 tracks=filtered_tracks,
                 selected_id=None,
@@ -432,7 +433,7 @@ class SubAutoApp(ctk.CTk):
                 self.track_items[0].select()
                 
         except Exception as e:
-            view = self.step_frames[2]
+            view = self.step_frames[1]
             view.set_model_status(f"Error: {str(e)}", COLORS["error"])
             view.no_tracks_label.configure(
                 text=f"Error: {str(e)}",
@@ -496,7 +497,7 @@ class SubAutoApp(ctk.CTk):
         # Use set_step to update UI selection
         self.stepper.set_step(3)
         self._update_step_states() # Update completion status
-        self._show_step(3)
+        self.step_controller.show_step(3)
         
         # Set file info in processing view
         if self.app_state.current_file:
@@ -521,7 +522,7 @@ class SubAutoApp(ctk.CTk):
         # For general exit, let's assume we just update the view
         elif self.app_state.active_translator is None:
              # Just refresh current step
-             self._show_step(self.stepper.current_step)
+             self.step_controller.show_step(self.stepper.current_step)
     
     def _start_translation(self):
         """Start the translation process by asking for title confirmation first."""
@@ -563,9 +564,9 @@ class SubAutoApp(ctk.CTk):
         
         # Initialize orchestrator via session
         self.translation_session.init_orchestrator(
-             on_progress=self._on_translation_progress,
-             on_complete=self._on_translation_orchestrator_complete,
-             on_error=self._on_translation_error
+             on_progress=self.translation_controller.on_progress,
+             on_complete=self.translation_controller.on_orchestrator_complete,
+             on_error=self.translation_controller.on_error
         )
         
         source_lang = self.source_lang_row.get_value()
@@ -687,11 +688,11 @@ class SubAutoApp(ctk.CTk):
         self.app_state.merge_payload = payload
         
         # Update view
-        view = self.step_frames[4]
+        view = self.step_frames[3]
         view.show_payload(payload)
         
         # Update Stepper
-        self._show_step(4)
+        self.step_controller.show_step(4)
         self.toast.info("Translation complete! Please review the subtitles.")
     
     def _on_review_approved(self, content: str):

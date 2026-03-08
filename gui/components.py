@@ -705,7 +705,12 @@ class SegmentedProgressBar(ctk.CTkFrame):
 
     def _draw(self, no_color_updates=False, **kwargs):
         """Draw segments."""
-        if self._current_width <= 0:
+        # Try to get actual width if not stored
+        if self._current_width <= 1:
+            self.update_idletasks() # Ensure layout is updated
+            self._current_width = self.winfo_width()
+
+        if self._current_width <= 1:
             return
             
         # If called by parent init, canvas might not be ready or we want to skip
@@ -761,6 +766,12 @@ class SegmentedProgressBar(ctk.CTkFrame):
 
     def _update_colors(self):
         """Update segment colors."""
+        if self._segments_count <= 0:
+            self._draw()
+            
+        if self._segments_count <= 0:
+            return
+
         target_active = int(self.progress * self._segments_count)
         
         # Optimization: only update changed segments? 
@@ -2780,6 +2791,19 @@ class VerticalStepper(ctk.CTkFrame):
         if 1 <= step_number <= len(self.steps):
             self.current_step = step_number
             self._refresh()
+
+    def update_step(self, step_number: int, description: str = None, is_complete: bool = False):
+        """Update a step's description and completion status."""
+        if 1 <= step_number <= len(self.steps):
+            if description is not None:
+                self.step_descriptions[step_number] = description
+            
+            if is_complete:
+                self.completed_steps.add(step_number)
+            else:
+                self.completed_steps.discard(step_number)
+            
+            self._refresh()
             
     def update_step_description(self, step_number: int, description: str):
         """Update the description/subtitle for a step."""
@@ -2941,6 +2965,20 @@ class HorizontalStepper(ctk.CTkFrame):
         # Allow len + 1 to indicate "all steps completed"
         if 1 <= step_number <= len(self.steps) + 1:
             self.current_step = step_number
+            self._refresh()
+
+    def update_step(self, step_number: int, description: str = None, is_complete: bool = False):
+        """Update a step's status (description is ignored in horizontal layout)."""
+        if 1 <= step_number <= len(self.steps):
+            if is_complete:
+                self.completed_steps.add(step_number)
+            else:
+                self.completed_steps.discard(step_number)
+            
+            # Note: description is kept for compatibility but not displayed
+            if description is not None:
+                self.step_descriptions[step_number] = description
+                
             self._refresh()
             
     def update_step_description(self, step_number: int, description: str):

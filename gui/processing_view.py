@@ -208,6 +208,12 @@ class ProcessingView(ctk.CTkFrame):
         # Force UI refresh to ensure token stats are visible immediately
         self.update_idletasks()
     
+    def set_status(self, text: str, color: Optional[str] = None):
+        """Update status label."""
+        self.status_label.configure(text=text)
+        if color:
+            self.status_label.configure(text_color=color)
+    
     def set_paused(self, paused: bool):
         """Set paused state."""
         self.is_paused = paused
