@@ -1,14 +1,14 @@
 import threading
-from typing import Callable, Optional
-from core.translator import get_api_manager, APIManager
-from core.config_manager import Config
+from typing import Callable, Optional, List
+from core.translator import get_api_manager
+from core.config_manager import ConfigManager
 from gui.state.app_state import AppState
 from gui.styles import COLORS
 
 class APIController:
     """Controller for managing AI provider connections and model fetching."""
     
-    def __init__(self, state: AppState, config: Config, title_bar: any, toast: any):
+    def __init__(self, state: AppState, config: ConfigManager, title_bar: any, toast: any):
         self.state = state
         self.config = config
         self.title_bar = title_bar
@@ -18,10 +18,11 @@ class APIController:
         self.validate_btn = None
         self.after_func = None # App's .after() method for thread-safe UI updates
         
-    def set_ui_elements(self, dropdown, status, validate_btn, after_func):
+    def set_ui_elements(self, dropdown, status, validate_btn, title_bar, after_func):
         self.model_dropdown = dropdown
         self.model_status = status
         self.validate_btn = validate_btn
+        self.title_bar = title_bar
         self.after_func = after_func
 
     def sync_api_state(self):

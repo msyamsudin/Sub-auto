@@ -86,19 +86,19 @@ class SubAutoApp(ctk.CTk):
         self.after(10, self._setup_window_style)
         
         # State
-        self.state = AppState()
+        self.app_state = AppState()
         self.config = get_config()
         self.settings_view: Optional[SettingsDialog] = None
         self.history_view: Optional[HistoryView] = None
         self.mkv_handler: Optional[MKVHandler] = None
         
-        self.state_manager = get_state_manager()
+        self.app_state_manager = get_state_manager()
         self.history_manager = get_history_manager()
         self.logger = get_logger()
         
         self._pending_resume = False # Keep as internal UI state for now or move to app_state?
         # Moving most to app_state
-        self.state.remove_old_subs = True
+        self.app_state.remove_old_subs = True
         
         # Initialize MKV handler and services
         
@@ -108,14 +108,14 @@ class SubAutoApp(ctk.CTk):
         # Initialize MKV handler and services
         self._init_mkv_handler()
         self.finalization_service = FinalizationService(self.mkv_handler)
-        self.subtitle_service = SubtitleTrackService(self.mkv_handler, self.state)
+        self.subtitle_service = SubtitleTrackService(self.mkv_handler, self.app_state)
         self.subtitle_service.set_language_mapping(self.LANGUAGE_MAPPING)
         
-        self.translation_session = TranslationSession(self.mkv_handler, self.state)
-        self.api_controller = APIController(self.state, self.config, None, None) 
-        self.translation_controller = TranslationController(self.state, None, None, self.after)
+        self.translation_session = TranslationSession(self.mkv_handler, self.app_state)
+        self.api_controller = APIController(self.app_state, self.config, None, None) 
+        self.translation_controller = TranslationController(self.app_state, None, None, self.after)
         
-        self.view_manager = ViewManager(self, self.state)
+        self.view_manager = ViewManager(self, self.app_state)
         self.view_manager.set_callbacks(
             on_open=self._on_overlay_opened,
             on_close=self._on_overlay_closed
@@ -191,14 +191,14 @@ class SubAutoApp(ctk.CTk):
         self.step_frames = [view1, view2, self.processing_view, view4]
         
         # Step Controller
-        self.step_controller = StepController(self.state, self.stepper, self.step_frames)
+        self.step_controller = StepController(self.app_state, self.stepper, self.step_frames)
         self.step_controller.set_callback(self._on_handle_step_change_ui)
 
         # Footer
         self._create_footer()
         
         # Link API Controller
-        self.api_controller.set_ui_elements(self.model_dropdown, self.model_status, self.validate_btn, self.after)
+        self.api_controller.set_ui_elements(self.model_dropdown, self.model_status, self.validate_btn, self.title_bar, self.after)
         
         # Show first step
         self.step_controller.show_step(1)
@@ -265,11 +265,11 @@ class SubAutoApp(ctk.CTk):
 
     def _update_action_buttons(self):
         """Enable/disable action buttons in footer."""
-        has_file = self.state.current_file is not None
-        has_track = self.state.selected_track_id is not None
-        api_ready = self.state.api_validated
+        has_file = self.app_state.current_file is not None
+        has_track = self.app_state.selected_track_id is not None
+        api_ready = self.app_state.api_validated
         
-        can_start = has_file and has_track and api_ready and not self.state.is_processing
+        can_start = has_file and has_track and api_ready and not self.app_state.is_processing
         if hasattr(self, 'start_btn'):
             self.start_btn.configure(state="normal" if can_start else "disabled")
         
@@ -280,10 +280,10 @@ class SubAutoApp(ctk.CTk):
         """Calculate and display estimated tokens for OpenRouter translations."""
         # Only show for OpenRouter/Groq with file, track, and API ready
         if (self.config.provider not in ["openrouter", "groq"] or 
-            not self.state.current_file or 
-            self.state.selected_track_id is None or
-            not self.state.api_validated or
-            self.state.is_processing): # Don't estimate while already processing
+            not self.app_state.current_file or 
+            self.app_state.selected_track_id is None or
+            not self.app_state.api_validated or
+            self.app_state.is_processing): # Don't estimate while already processing
             if hasattr(self, 'cost_estimate_label'):
                 self.cost_estimate_label.configure(text="")
             return
@@ -311,8 +311,8 @@ class SubAutoApp(ctk.CTk):
                 self.after(0, lambda: self.cost_estimate_label.configure(text=""))
                 
             started = self.estimation_service.estimate_tokens_async(
-                self.state.current_file,
-                self.state.selected_track_id,
+                self.app_state.current_file,
+                self.app_state.selected_track_id,
                 on_result,
                 on_error
             )
@@ -354,7 +354,7 @@ class SubAutoApp(ctk.CTk):
             self.footer.grid_remove()
         
         if view_type == "settings" and self.view_manager.settings_view:
-            self.view_manager.settings_view.remove_subs_var.set(self.state.remove_old_subs)
+            self.view_manager.settings_view.remove_subs_var.set(self.app_state.remove_old_subs)
 
     def _on_overlay_closed(self, view_type: str):
         """Callback when an overlay is closed."""
@@ -372,8 +372,8 @@ class SubAutoApp(ctk.CTk):
         
         # Sync API validation state
         manager = get_api_manager()
-        self.state.api_validated = manager.is_configured
-        self.state.selected_model = manager.selected_model
+        self.app_state.api_validated = manager.is_configured
+        self.app_state.selected_model = manager.selected_model
         
         # If AI settings changed, handle validation sync
         if settings.get("ai_settings_changed", False):
@@ -383,7 +383,7 @@ class SubAutoApp(ctk.CTk):
                    (self.config.provider == "openrouter" and self.config.openrouter_api_key) or \
                    (self.config.provider == "groq" and self.config.groq_api_key):
                     # Show connecting status first
-                    self.state.is_validating = True
+                    self.app_state.is_validating = True
                     self.title_bar.set_api_status(False, connecting=True)
                     self._validate_api()
                 else:
@@ -398,7 +398,7 @@ class SubAutoApp(ctk.CTk):
     
     def _on_file_selected(self, file_path: str):
         """Handle file selection."""
-        self.state.current_file = file_path
+        self.app_state.current_file = file_path
         self._load_subtitle_tracks()
         self._update_step_states()
         
@@ -408,11 +408,11 @@ class SubAutoApp(ctk.CTk):
     
     def _load_subtitle_tracks(self):
         """Load subtitle tracks from the selected MKV file."""
-        if not self.state.current_file or not self.mkv_handler:
+        if not self.app_state.current_file or not self.mkv_handler:
             return
             
         try:
-            filtered_tracks = self.subtitle_service.load_tracks(self.state.current_file)
+            filtered_tracks = self.subtitle_service.load_tracks(self.app_state.current_file)
             
             # Update View
             view = self.step_frames[2]
@@ -448,8 +448,8 @@ class SubAutoApp(ctk.CTk):
              pass # Track was deselected
             
         # Update source language based on track info
-        if self.state.selected_track_id is not None:
-            lang_name = self.subtitle_service.get_track_language_name(self.state.selected_track_id)
+        if self.app_state.selected_track_id is not None:
+            lang_name = self.subtitle_service.get_track_language_name(self.app_state.selected_track_id)
             if lang_name:
                 # Ensure the option exists in the dropdown
                 current_options = self.source_lang_row.input.cget("values")
@@ -463,26 +463,18 @@ class SubAutoApp(ctk.CTk):
                     self.source_lang_row.input.configure(values=new_options)
                 
                 self.source_lang_row.set_value(lang_name)
-                self.logger.info(f"🌐 Auto-selected source language: {lang_name} (from track {self.state.selected_track_id})")
+                self.logger.info(f"🌐 Auto-selected source language: {lang_name} (from track {self.app_state.selected_track_id})")
 
         self._update_step_states()
     
     def _on_model_change(self, model: str):
         """Handle model selection change."""
-        self.state.selected_model = model
+        self.app_state.selected_model = model
         self._update_step_states()
     
     def _validate_api(self):
         """Validate AI provider connection."""
-        self.validate_btn.configure(state="disabled", text="...")
-        self.model_status.configure(text="Connecting & fetching models...", text_color=COLORS["text_secondary"])
-        self.model_dropdown.configure(state="disabled")
-        self.title_bar.set_api_status(False, connecting=True)
-        self.state.is_validating = True
-        
-        # Validate in background
-        thread = threading.Thread(target=self._do_validate, daemon=True)
-        thread.start()
+        self.api_controller.validate_api()
     
     # Removed legacy _do_validate, _on_validate_result, _on_validate_error
     
@@ -497,7 +489,7 @@ class SubAutoApp(ctk.CTk):
     
     def _enter_processing_mode(self):
         """Switch to processing mode (Step 3)."""
-        self.state.is_processing = True
+        self.app_state.is_processing = True
         self.title_bar.title_label.configure(text=f"{self.APP_TITLE} - Processing")
         
         # Switch to Step 3
@@ -507,11 +499,11 @@ class SubAutoApp(ctk.CTk):
         self._show_step(3)
         
         # Set file info in processing view
-        if self.state.current_file:
-            filename = Path(self.state.current_file).name
+        if self.app_state.current_file:
+            filename = Path(self.app_state.current_file).name
             track_info = ""
-            for track in self.state.subtitle_tracks:
-                if track.track_id == self.state.selected_track_id:
+            for track in self.app_state.subtitle_tracks:
+                if track.track_id == self.app_state.selected_track_id:
                     track_info = f"Track {track.track_id} - {track.language.upper()}"
                     break
             
@@ -519,30 +511,30 @@ class SubAutoApp(ctk.CTk):
     
     def _exit_processing_mode(self):
         """Return to normal mode or advance to review."""
-        self.state.is_processing = False
+        self.app_state.is_processing = False
         self.title_bar.title_label.configure(text=self.APP_TITLE)
         
         # If cancelled, go back to configuration (Step 2)
-        if self.state.should_cancel:
+        if self.app_state.should_cancel:
              self._on_step_change(2)
         # If completed (logic handled in _on_translation_complete), we might stay or go to step 4
         # For general exit, let's assume we just update the view
-        elif self.state.active_translator is None:
+        elif self.app_state.active_translator is None:
              # Just refresh current step
              self._show_step(self.stepper.current_step)
     
     def _start_translation(self):
         """Start the translation process by asking for title confirmation first."""
-        if not self.state.api_validated:
+        if not self.app_state.api_validated:
             self.toast.warning("Please connect API first")
             return
         
-        if not self.state.current_file or self.state.selected_track_id is None:
+        if not self.app_state.current_file or self.app_state.selected_track_id is None:
             self.toast.warning("Please select a file and track")
             return
             
         # Extract title automatically
-        extracted_title = extract_anime_title(self.state.current_file)
+        extracted_title = extract_anime_title(self.app_state.current_file)
         
         # Show review dialog
         dialog = ctk.CTkInputDialog(
@@ -563,10 +555,10 @@ class SubAutoApp(ctk.CTk):
             self.toast.info("Translation cancelled")
             return
             
-        self.state.current_anime_title = reviewed_title.strip()
+        self.app_state.current_anime_title = reviewed_title.strip()
         
-        self.state.is_processing = True
-        self.state.pending_estimates.clear() # Cancel background work
+        self.app_state.is_processing = True
+        self.app_state.pending_estimates.clear() # Cancel background work
         self._enter_processing_mode()
         
         # Initialize orchestrator via session
@@ -578,15 +570,15 @@ class SubAutoApp(ctk.CTk):
         
         source_lang = self.source_lang_row.get_value()
         target_lang = self.target_lang_row.get_value()
-        model_used = self.state.selected_model or "gemini-1.5-flash"
+        model_used = self.app_state.selected_model or "gemini-1.5-flash"
         
         self.translation_session.start(
-             self.state.current_file,
-             self.state.selected_track_id,
+             self.app_state.current_file,
+             self.app_state.selected_track_id,
              source_lang,
              target_lang,
              model_used,
-             self.state.current_anime_title
+             self.app_state.current_anime_title
         )
     
     # Removed _on_translation_progress, _on_orchestrator_complete from here
@@ -594,7 +586,7 @@ class SubAutoApp(ctk.CTk):
     
     def _pause_translation(self):
         """Pause translation."""
-        if self.state.is_paused:
+        if self.app_state.is_paused:
             # Resume
             self._do_resume()
         else:
@@ -605,7 +597,7 @@ class SubAutoApp(ctk.CTk):
     
     def _resume_translation(self):
         """Resume from saved state."""
-        if not self.state.api_validated:
+        if not self.app_state.api_validated:
             self._pending_resume = True
             self.resume_btn.configure(state="disabled", text="Connecting...")
             self._validate_api()
@@ -616,9 +608,9 @@ class SubAutoApp(ctk.CTk):
     def _do_resume(self):
         """Actually resume translation."""
         self._pending_resume = False
-        self.state.is_paused = False
-        self.state.should_cancel = False
-        self.state.is_processing = True
+        self.app_state.is_paused = False
+        self.app_state.should_cancel = False
+        self.app_state.is_processing = True
         
         self.processing_view.set_paused(False)
         self.resume_btn.pack_forget()
@@ -636,13 +628,13 @@ class SubAutoApp(ctk.CTk):
              
         source_lang = self.source_lang_row.get_value()
         target_lang = self.target_lang_row.get_value()
-        model_used = self.state.selected_model or "gemini-1.5-flash"
-        anime_title = getattr(self.state, 'current_anime_title', None)
+        model_used = self.app_state.selected_model or "gemini-1.5-flash"
+        anime_title = getattr(self.app_state, 'current_anime_title', None)
         
         # Call start again to resume background thread
         self.translation_session.start(
-            self.state.current_file,
-            self.state.selected_track_id,
+            self.app_state.current_file,
+            self.app_state.selected_track_id,
             source_lang,
             target_lang,
             model_used,
@@ -671,8 +663,8 @@ class SubAutoApp(ctk.CTk):
         self.summary_view.grid(row=1, column=0, rowspan=2, sticky="nsew")
         self.summary_view.lift()
         
-        if self.state_manager:
-            self.state_manager.clear()
+        if self.app_state_manager:
+            self.app_state_manager.clear()
             
         self.after(2000, self._exit_processing_mode)
     
@@ -690,9 +682,9 @@ class SubAutoApp(ctk.CTk):
     
     def _show_review_editor(self, payload: dict):
         """Show the subtitle review editor."""
-        self.state.is_processing = False
+        self.app_state.is_processing = False
         self._exit_processing_mode()
-        self.state.merge_payload = payload
+        self.app_state.merge_payload = payload
         
         # Update view
         view = self.step_frames[4]
@@ -706,14 +698,14 @@ class SubAutoApp(ctk.CTk):
         """Handle review approval - save edited content and merge."""
         try:
             # Save edited content back to file
-            with open(self.state.merge_payload["translated_sub_path"], 'wt', encoding='utf-8') as f:
+            with open(self.app_state.merge_payload["translated_sub_path"], 'wt', encoding='utf-8') as f:
                 f.write(content)
             
             # Finalize merge via service
             self.toast.info("Finalizing merge into video...")
             summary = self.finalization_service.finalize_merge(
-                self.state.merge_payload, 
-                remove_old_subs=self.state.remove_old_subs
+                self.app_state.merge_payload, 
+                remove_old_subs=self.app_state.remove_old_subs
             )
             self._on_translation_complete(summary)
             
@@ -723,22 +715,22 @@ class SubAutoApp(ctk.CTk):
             
     def _on_review_discarded(self):
         """Handle review discard - clean up and reset."""
-        self.finalization_service.cleanup_temp_files(self.state.merge_payload) 
-        if self.state_manager:
-            self.state_manager.clear()
-        self.state.merge_payload = None
+        self.finalization_service.cleanup_temp_files(self.app_state.merge_payload) 
+        if self.app_state_manager:
+            self.app_state_manager.clear()
+        self.app_state.merge_payload = None
         self._on_step_change(2) # Back to config
         self.toast.info("Translation discarded")
     
     
     def _check_resumable_state(self):
         """Check for resumable state."""
-        state = self.state_manager.load()
+        state = self.app_state_manager.load()
         if not state:
             return
         
         if not os.path.exists(state.source_file):
-            self.state_manager.clear()
+            self.app_state_manager.clear()
             return
         
         # Ask user
@@ -748,7 +740,7 @@ class SubAutoApp(ctk.CTk):
             f"Progress: {state.progress_percent:.1f}%\n"
             "Resume?"
         ):
-            self.state.current_file = state.source_file
+            self.app_state.current_file = state.source_file
             self.file_drop.set_file(state.source_file)
             self._load_subtitle_tracks()
             
@@ -757,41 +749,41 @@ class SubAutoApp(ctk.CTk):
             
             self.source_lang_row.set_value(state.source_lang)
             self.target_lang_row.set_value(state.target_lang)
-            self.state.selected_model = state.model_name
+            self.app_state.selected_model = state.model_name
             
             # Show resume button
             self.start_btn.pack_forget()
             self.resume_btn.pack(side="left")
             self.status_label.configure(text="Ready to resume")
         else:
-            self.state_manager.clear()
+            self.app_state_manager.clear()
     
     def _select_track_by_id(self, track_id: int):
         """Select track by ID."""
         for item in self.track_items:
             if item.track_id == track_id:
                 item.select()
-                self.state.selected_track_id = track_id
+                self.app_state.selected_track_id = track_id
                 self._update_step_states()
                 break
     
     def _reset_app(self):
         """Reset app to initial state."""
-        self.state.current_file = None
+        self.app_state.current_file = None
         self.file_drop.reset()
         
         for item in self.track_items:
             item.destroy()
         self.track_items.clear()
-        self.state.selected_track_id = None
+        self.app_state.selected_track_id = None
         self.no_tracks_label.grid()
         
-        self.state.is_processing = False
-        self.state.is_paused = False
-        self.state.should_cancel = False
+        self.app_state.is_processing = False
+        self.app_state.is_paused = False
+        self.app_state.should_cancel = False
         # Clear payload to ensure Step 3/4 reset
-        if hasattr(self.state, 'merge_payload'):
-            self.state.merge_payload = None
+        if hasattr(self.app_state, 'merge_payload'):
+            self.app_state.merge_payload = None
         
         self._on_step_change(1) # Go back to step 1
         self._update_step_states()
@@ -802,16 +794,16 @@ class SubAutoApp(ctk.CTk):
     
     def _show_last_summary(self):
         """Re-open the last summary window."""
-        if self.state.last_summary_data:
+        if self.app_state.last_summary_data:
             from pathlib import Path
-            output_path = Path(self.state.last_summary_data["output_path"])
+            output_path = Path(self.app_state.last_summary_data["output_path"])
             
             if hasattr(self, 'summary_view') and self.summary_view:
                 self.summary_view.destroy()
             
             self.summary_view = SummaryWindow(
                 self,
-                **self.state.last_summary_data,
+                **self.app_state.last_summary_data,
                 on_open_folder=lambda: os.startfile(output_path.parent),
                 on_close=self._close_summary
             )
@@ -820,11 +812,11 @@ class SubAutoApp(ctk.CTk):
 
     def _on_close(self):
         """Handle window close."""
-        if self.state.is_processing and not self.state.is_paused:
+        if self.app_state.is_processing and not self.app_state.is_paused:
             if not messagebox.askokcancel("Quit", "Translation in progress. Quit?"):
                 return
         
-        self.state.should_cancel = True
+        self.app_state.should_cancel = True
         self.quit()
         self.destroy()
         sys.exit(0)
