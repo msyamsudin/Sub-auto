@@ -14,6 +14,9 @@ import time
 import sys
 import ctypes
 
+from .constants import APP_TITLE, APP_VERSION, WINDOW_SIZE, MIN_SIZE, LANGUAGE_MAPPING
+from .window_utils import setup_window_style
+
 from .styles import (
     COLORS, FONTS, SPACING, RADIUS,
     configure_theme, get_button_style, get_frame_style, get_label_style, get_input_style
@@ -46,10 +49,10 @@ from core.version import __version__
 class SubAutoApp(ctk.CTk):
     """Main application window for Sub-auto."""
     
-    APP_TITLE = "sub-auto"
-    APP_VERSION = f"v{__version__}"
-    WINDOW_SIZE = (1200, 800)  # Increased from (780, 520) to match editor size
-    MIN_SIZE = (1200, 800)      # Increased from (700, 480)
+    APP_TITLE = APP_TITLE
+    APP_VERSION = APP_VERSION
+    WINDOW_SIZE = WINDOW_SIZE
+    MIN_SIZE = MIN_SIZE
     
     def __init__(self):
         super().__init__()
@@ -100,18 +103,7 @@ class SubAutoApp(ctk.CTk):
         self._subtitle_cache = {}
         
         # Language mapping from ISO 639-2 (MKVToolnix) to human names
-        self.LANGUAGE_MAPPING = {
-            "eng": "English",
-            "ara": "Arabic",
-            "jpn": "Japanese",
-            "kor": "Korean",
-            "chi": "Chinese",
-            "zho": "Chinese",
-            "ind": "Indonesian",
-            "may": "Indonesian",
-            "msa": "Indonesian",
-            "und": "English",
-        }
+        self.LANGUAGE_MAPPING = LANGUAGE_MAPPING
         
         # Initialize MKV handler and services
         self._init_mkv_handler()
@@ -142,44 +134,7 @@ class SubAutoApp(ctk.CTk):
     
     def _setup_window_style(self):
         """Setup Windows-specific window styling."""
-        try:
-            # Get window handle
-            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
-            
-            # Enable shadow effect
-            DWMWA_NCRENDERING_POLICY = 2
-            DWMNCRP_ENABLED = 2
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_NCRENDERING_POLICY,
-                ctypes.byref(ctypes.c_int(DWMNCRP_ENABLED)),
-                ctypes.sizeof(ctypes.c_int)
-            )
-
-            # Enable rounded corners (Windows 11)
-            DWMWA_WINDOW_CORNER_PREFERENCE = 33
-            DWMWCP_ROUND = 2
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_WINDOW_CORNER_PREFERENCE,
-                ctypes.byref(ctypes.c_int(DWMWCP_ROUND)),
-                ctypes.sizeof(ctypes.c_int)
-            )
-            
-            # Show in taskbar - set window as tool window then back to normal
-            GWL_EXSTYLE = -20
-            WS_EX_TOOLWINDOW = 0x00000080
-            WS_EX_APPWINDOW = 0x00040000
-            
-            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            style = style & ~WS_EX_TOOLWINDOW | WS_EX_APPWINDOW
-            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
-            
-            # Force window to refresh
-            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
-            ctypes.windll.user32.ShowWindow(hwnd, 5)  # SW_SHOW
-        except Exception as e:
-            self.logger.warning(f"Failed to setup window style: {e}")
+        setup_window_style(self)
     
     def _setup_ui(self):
         """Setup the main UI - Top Nav + Content layout."""
