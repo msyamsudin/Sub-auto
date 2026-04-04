@@ -168,7 +168,7 @@ class PromptSettingsTab(ctk.CTkFrame):
             button_frame,
             text="Save",
             command=self._on_save_prompt,
-            **get_button_style("primary")
+            **get_button_style("secondary")
         )
         self.save_btn.pack(side="left", padx=(0, SPACING["sm"]))
         
@@ -192,11 +192,7 @@ class PromptSettingsTab(ctk.CTkFrame):
             button_frame,
             text="Delete",
             command=self._on_delete_prompt,
-            fg_color="transparent",
-            hover_color=COLORS["bg_light"],
-            text_color=COLORS["error"],
-            border_width=1,
-            border_color=COLORS["error"]
+            **get_button_style("danger")
         )
         self.delete_btn.pack(side="right")
         
@@ -327,7 +323,7 @@ class PromptSettingsTab(ctk.CTkFrame):
             
             # Change background color
             bg_color = COLORS["bg_light"] if is_selected else COLORS["bg_dark"]
-            widgets["frame"].configure(fg_color=bg_color, border_color=COLORS["accent"] if is_selected else COLORS["border"])
+            widgets["frame"].configure(fg_color=bg_color, border_color=COLORS["border_light"] if is_selected else COLORS["border"])
             
             # Highlight text slightly if selected, but respect active color
             # We don't change text color here to preserve the "Active" Green logic,

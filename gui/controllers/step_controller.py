@@ -21,7 +21,7 @@ class StepController:
         
         # Show target
         if 1 <= step_index <= len(self.step_frames):
-            self.step_frames[step_index-1].grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+            self.step_frames[step_index-1].grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
             self.stepper.set_step(step_index)
 
     def handle_step_change(self, step_index: int):

@@ -8,7 +8,7 @@ from tkinter import filedialog
 from typing import Optional, Callable
 
 from .styles import COLORS, FONTS, SPACING, RADIUS, get_button_style, get_input_style, get_label_style, get_option_menu_style
-from .components import CustomTitleBar
+from .components import CustomTitleBar, ModelSelectorDialog
 
 
 import threading
@@ -49,7 +49,17 @@ class SettingsDialog(ctk.CTkFrame):
         from .prompt_settings_tab import PromptSettingsTab
         
         # Create tabview
-        self.tabview = ctk.CTkTabview(self, fg_color="transparent")
+        self.tabview = ctk.CTkTabview(
+            self,
+            fg_color=COLORS["bg_medium"],
+            segmented_button_fg_color=COLORS["bg_light"],
+            segmented_button_selected_color=COLORS["accent_bg"],
+            segmented_button_selected_hover_color=COLORS["border_light"],
+            segmented_button_unselected_color=COLORS["bg_medium"],
+            segmented_button_unselected_hover_color=COLORS["bg_light"],
+            text_color=COLORS["text_primary"],
+            border_color=COLORS["border"]
+        )
         self.tabview.pack(
             side="top",
             fill="both",
@@ -85,10 +95,10 @@ class SettingsDialog(ctk.CTkFrame):
         # Save and Cancel buttons
         save_btn = ctk.CTkButton(
             footer,
-            text="Save",
+            text="Save Changes",
             width=100,
             command=self._save_settings,
-            **get_button_style("primary")
+            **get_button_style("secondary")
         )
         save_btn.pack(side="right", padx=SPACING["sm"])
         
@@ -100,11 +110,150 @@ class SettingsDialog(ctk.CTkFrame):
             **get_button_style("secondary")
         )
         cancel_btn.pack(side="right", padx=SPACING["sm"])
+
+    def _create_section_card(self, parent, row: int, title: str, description: str):
+        card = ctk.CTkFrame(
+            parent,
+            fg_color=COLORS["bg_medium"],
+            border_width=1,
+            border_color=COLORS["border"],
+            corner_radius=RADIUS["lg"]
+        )
+        card.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, SPACING["md"]))
+        card.grid_columnconfigure(0, weight=1)
+
+        header = ctk.CTkFrame(card, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=SPACING["lg"], pady=(SPACING["md"], SPACING["sm"]))
+        header.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            header,
+            text=title,
+            font=(FONTS["family"], FONTS["subheading_size"], "bold"),
+            text_color=COLORS["text_primary"]
+        ).grid(row=0, column=0, sticky="w")
+
+        ctk.CTkLabel(
+            header,
+            text=description,
+            font=(FONTS["family"], FONTS["small_size"]),
+            text_color=COLORS["text_secondary"]
+        ).grid(row=1, column=0, sticky="w", pady=(SPACING["xs"], 0))
+
+        body = ctk.CTkFrame(card, fg_color="transparent")
+        body.grid(row=1, column=0, sticky="ew", padx=SPACING["lg"], pady=(0, SPACING["lg"]))
+        body.grid_columnconfigure(1, weight=1)
+        return body
+
+    def _create_field_label(self, parent, text: str):
+        return ctk.CTkLabel(parent, text=text, **get_label_style("body"))
+
+    def _create_status_label(self, parent):
+        return ctk.CTkLabel(
+            parent,
+            text="Not connected",
+            font=(FONTS["family"], FONTS["small_size"], "bold"),
+            text_color=COLORS["text_muted"]
+        )
+
+    def _create_provider_selector(self, parent):
+        selector = ctk.CTkFrame(parent, fg_color="transparent")
+        selector.grid_columnconfigure((0, 1, 2), weight=1)
+
+        self.provider_buttons = {}
+        provider_meta = [
+            ("openrouter", "OpenRouter", "Cloud models"),
+            ("groq", "Groq", "Fast hosted inference"),
+            ("ollama", "Ollama", "Local runtime"),
+        ]
+
+        for col, (value, title, subtitle) in enumerate(provider_meta):
+            card = ctk.CTkFrame(
+                selector,
+                fg_color=COLORS["bg_dark"],
+                border_width=1,
+                border_color=COLORS["border"],
+                corner_radius=RADIUS["md"],
+                height=68
+            )
+            card.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else SPACING["sm"], 0))
+            card.grid_propagate(False)
+            card.grid_columnconfigure(0, weight=1)
+
+            hitbox = ctk.CTkFrame(
+                card,
+                fg_color="transparent",
+                corner_radius=RADIUS["md"]
+            )
+            hitbox.grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
+            hitbox.grid_columnconfigure(0, weight=1)
+
+            title_label = ctk.CTkLabel(
+                hitbox,
+                text=title,
+                font=(FONTS["family"], FONTS["body_size"], "bold"),
+                text_color=COLORS["text_primary"]
+            )
+            title_label.grid(row=0, column=0, sticky="w", padx=SPACING["md"], pady=(SPACING["sm"], 0))
+
+            subtitle_label = ctk.CTkLabel(
+                hitbox,
+                text=subtitle,
+                font=(FONTS["family"], FONTS["small_size"]),
+                text_color=COLORS["text_secondary"]
+            )
+            subtitle_label.grid(row=1, column=0, sticky="w", padx=SPACING["md"], pady=(SPACING["xs"], SPACING["sm"]))
+
+            for widget in [card, hitbox, title_label, subtitle_label]:
+                widget.bind("<Button-1>", lambda e, v=value: self._select_provider(v))
+                widget.configure(cursor="hand2")
+
+            self.provider_buttons[value] = {
+                "card": card,
+                "button": hitbox,
+                "title": title_label,
+                "subtitle": subtitle_label,
+            }
+
+        self._refresh_provider_selector()
+        return selector
+
+    def _refresh_provider_selector(self):
+        current = self.provider_var.get()
+        for value, widgets in self.provider_buttons.items():
+            is_selected = value == current
+            widgets["card"].configure(
+                fg_color=COLORS["accent_bg"] if is_selected else COLORS["bg_dark"],
+                border_color=COLORS["border_light"] if is_selected else COLORS["border"]
+            )
+            widgets["button"].configure(
+                fg_color=COLORS["bg_light"] if is_selected else "transparent"
+            )
+            widgets["title"].configure(text_color=COLORS["text_primary"])
+            widgets["subtitle"].configure(
+                text_color=COLORS["primary_light"] if is_selected else COLORS["text_secondary"]
+            )
+
+    def _select_provider(self, provider: str):
+        self.provider_var.set(provider)
+        self._refresh_provider_selector()
+        self._on_provider_change(provider)
+
+    def _open_model_picker(self, models, current_model: str, on_select: Callable[[str], None], title: str):
+        if not models:
+            self._show_toast("No models available yet. Test the connection first.", "warning")
+            return
+        ModelSelectorDialog(self, models=models, on_select=on_select, current_model=current_model, title=title)
     
     def _setup_general_tab(self):
         """Setup the General settings tab (existing content)."""
         # Content (Scrollable)
-        content = ctk.CTkScrollableFrame(self.tabview.tab("General"), fg_color="transparent")
+        content = ctk.CTkScrollableFrame(
+            self.tabview.tab("General"),
+            fg_color="transparent",
+            scrollbar_button_color=COLORS["bg_light"],
+            scrollbar_button_hover_color=COLORS["border_light"]
+        )
         content.pack(
             fill="both",
             expand=True
@@ -114,48 +263,36 @@ class SettingsDialog(ctk.CTkFrame):
         # === Populate Content ===
         row = 0
         
-        # API Configuration Section
-        api_header = ctk.CTkLabel(
-            content, 
-            text="🔑 AI Provider Configuration",
-            font=(FONTS["family"], FONTS["subheading_size"], "bold"),
-            text_color=COLORS["text_primary"]
-        )
-        api_header.grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, SPACING["sm"]))
-        row += 1
-        
-        # Provider Selection
-        label_provider = ctk.CTkLabel(content, text="Provider:", **get_label_style("body"))
-        label_provider.grid(row=row, column=0, sticky="w", pady=(0, SPACING["sm"]))
-        
-        # Wrap dropdown in bordered frame
-        provider_wrapper = ctk.CTkFrame(
+        provider_section = self._create_section_card(
             content,
-            fg_color=COLORS["bg_dark"],
-            border_width=1,
-            border_color=COLORS["border"],
-            corner_radius=RADIUS["md"]
+            row,
+            "AI Provider",
+            "Choose the provider you want to use for translation."
         )
-        provider_wrapper.grid(row=row, column=1, sticky="w", pady=(0, SPACING["sm"]), padx=(SPACING["md"], 0))
-        
-        self.provider_var = ctk.StringVar(value=self.config.provider)
-        provider_menu = ctk.CTkOptionMenu(
-            provider_wrapper,
-            values=["openrouter", "ollama", "groq"],
-            variable=self.provider_var,
-            command=self._on_provider_change,
-            **get_option_menu_style()
-        )
-        provider_menu.pack(padx=1, pady=1)
         row += 1
-        
+
+        self.provider_var = ctk.StringVar(value=self.config.provider)
+        label_provider = ctk.CTkLabel(provider_section, text="Provider:", **get_label_style("body"))
+        label_provider.grid(row=row, column=0, sticky="nw", pady=(0, SPACING["sm"]))
+
+        self.provider_selector = self._create_provider_selector(provider_section)
+        self.provider_selector.grid(row=row, column=1, sticky="ew", pady=(0, SPACING["sm"]), padx=(SPACING["md"], 0))
+        row = 0
+
+        connection_section = self._create_section_card(
+            content,
+            1,
+            "Connection",
+            "Add credentials, test the connection, then choose an available model."
+        )
+
         # --- OpenRouter Settings Frame ---
-        self.openrouter_frame = ctk.CTkFrame(content, fg_color="transparent")
-        self.openrouter_frame.grid(row=row, column=0, columnspan=2, sticky="ew")
+        self.openrouter_frame = ctk.CTkFrame(connection_section, fg_color="transparent")
+        self.openrouter_frame.grid(row=0, column=0, columnspan=2, sticky="ew")
         self.openrouter_frame.grid_columnconfigure(1, weight=1)
         
         gem_row = 0
-        label_api = ctk.CTkLabel(self.openrouter_frame, text="OpenRouter Key:", **get_label_style("body"))
+        label_api = self._create_field_label(self.openrouter_frame, "OpenRouter Key:")
         label_api.grid(row=gem_row, column=0, sticky="w", pady=(0, SPACING["sm"]))
         
         api_container = ctk.CTkFrame(self.openrouter_frame, fg_color="transparent")
@@ -185,29 +322,23 @@ class SettingsDialog(ctk.CTkFrame):
 
         self.validate_btn = ctk.CTkButton(
             api_container,
-            text="⟳",
-            width=35,
+            text="Test",
+            width=72,
             command=self._validate_openrouter,
             **get_button_style("secondary")
         )
         self.validate_btn.grid(row=0, column=2, padx=(SPACING["sm"], 0))
         
         gem_row += 1
-        self.or_status_label = ctk.CTkLabel(
-            self.openrouter_frame,
-            text="",
-            font=(FONTS["family"], FONTS["small_size"], "bold"),
-            text_color=COLORS["text_muted"]
-        )
+        self.or_status_label = self._create_status_label(self.openrouter_frame)
         self.or_status_label.grid(row=gem_row, column=1, sticky="w", padx=(SPACING["md"], 0), pady=(0, SPACING["sm"]))
         
         gem_row += 1
-        label_model = ctk.CTkLabel(self.openrouter_frame, text="Model:", **get_label_style("body"))
+        label_model = self._create_field_label(self.openrouter_frame, "Model:")
         label_model.grid(row=gem_row, column=0, sticky="nw", pady=(0, SPACING["sm"]))
         
         self.or_model_var = ctk.StringVar(value=self.config.get("openrouter_model", "google/gemini-2.0-flash-exp:free"))
-        self.or_available_models = [] # Store models here
-        self.or_model_list_expanded = False  # Track list state
+        self.or_available_models = []
         
         # Inline Model Selection Container
         self.or_model_container = ctk.CTkFrame(
@@ -228,69 +359,42 @@ class SettingsDialog(ctk.CTkFrame):
             self.or_selected_frame,
             text=self.or_model_var.get() or "No model selected",
             font=(FONTS["family"], FONTS["body_size"]),
-            text_color=COLORS["text_primary"],
+            text_color=COLORS["text_secondary"],
             anchor="w"
         )
         self.or_selected_label.pack(side="left", fill="x", expand=True)
         
         self.or_expand_btn = ctk.CTkButton(
             self.or_selected_frame,
-            text="▼",
-            width=30,
+            text="Choose",
+            width=72,
             height=24,
-            fg_color="transparent",
-            hover_color=COLORS["bg_light"],
-            text_color=COLORS["text_secondary"],
-            command=self._toggle_model_list
+            command=lambda: self._open_model_picker(
+                self.or_available_models,
+                self.or_model_var.get(),
+                self._select_model,
+                "Choose OpenRouter Model"
+            ),
+            **get_button_style("secondary")
         )
         self.or_expand_btn.pack(side="right")
-        
-        # Expandable section (hidden by default)
-        self.or_expand_section = ctk.CTkFrame(self.or_model_container, fg_color="transparent")
-        
-        # Search entry
-        self.or_model_search = ctk.CTkEntry(
-            self.or_expand_section,
-            placeholder_text="🔍 Search models...",
-            fg_color=COLORS["bg_medium"],
-            border_width=0,
-            height=30
-        )
-        self.or_model_search.pack(fill="x", padx=SPACING["xs"], pady=(0, SPACING["xs"]))
-        self.or_model_search.bind("<KeyRelease>", self._on_model_search)
-        self.or_model_search.bind("<FocusIn>", lambda e: self._expand_model_list())
-        
-        # Model list (scrollable)
-        self.or_model_list = ctk.CTkScrollableFrame(
-            self.or_expand_section,
-            fg_color="transparent",
-            height=120
-        )
-        self.or_model_list.pack(fill="both", expand=True, padx=SPACING["xs"], pady=(0, SPACING["xs"]))
-        
-        # Initial message
-        self.or_model_placeholder = ctk.CTkLabel(
-            self.or_model_list,
-            text="Connect to load models",
-            **get_label_style("muted")
-        )
-        self.or_model_placeholder.pack(pady=SPACING["md"])
         
         gem_row += 1
         api_hint = ctk.CTkLabel(
             self.openrouter_frame,
             text="Get a key from: https://openrouter.ai/keys",
-            **get_label_style("muted")
+            font=(FONTS["family"], FONTS["small_size"]),
+            text_color=COLORS["text_secondary"]
         )
-        api_hint.grid(row=gem_row, column=0, columnspan=2, sticky="w", pady=(0, SPACING["lg"]))
+        api_hint.grid(row=gem_row, column=0, columnspan=2, sticky="w", pady=(0, SPACING["sm"]))
 
         # --- Groq Settings Frame ---
-        self.groq_frame = ctk.CTkFrame(content, fg_color="transparent")
-        self.groq_frame.grid(row=row, column=0, columnspan=2, sticky="ew")
+        self.groq_frame = ctk.CTkFrame(connection_section, fg_color="transparent")
+        self.groq_frame.grid(row=0, column=0, columnspan=2, sticky="ew")
         self.groq_frame.grid_columnconfigure(1, weight=1)
 
         gq_row = 0
-        label_gq_api = ctk.CTkLabel(self.groq_frame, text="Groq API Key:", **get_label_style("body"))
+        label_gq_api = self._create_field_label(self.groq_frame, "Groq API Key:")
         label_gq_api.grid(row=gq_row, column=0, sticky="w", pady=(0, SPACING["sm"]))
 
         gq_api_container = ctk.CTkFrame(self.groq_frame, fg_color="transparent")
@@ -320,24 +424,19 @@ class SettingsDialog(ctk.CTkFrame):
 
         self.validate_gq_btn = ctk.CTkButton(
             gq_api_container,
-            text="⟳",
-            width=35,
+            text="Test",
+            width=72,
             command=self._validate_groq,
             **get_button_style("secondary")
         )
         self.validate_gq_btn.grid(row=0, column=2, padx=(SPACING["sm"], 0))
 
         gq_row += 1
-        self.groq_status_label = ctk.CTkLabel(
-            self.groq_frame,
-            text="",
-            font=(FONTS["family"], FONTS["small_size"], "bold"),
-            text_color=COLORS["text_muted"]
-        )
+        self.groq_status_label = self._create_status_label(self.groq_frame)
         self.groq_status_label.grid(row=gq_row, column=1, sticky="w", padx=(SPACING["md"], 0), pady=(0, SPACING["sm"]))
 
         gq_row += 1
-        label_gq_model = ctk.CTkLabel(self.groq_frame, text="Model:", **get_label_style("body"))
+        label_gq_model = self._create_field_label(self.groq_frame, "Model:")
         label_gq_model.grid(row=gq_row, column=0, sticky="w", pady=(SPACING["sm"], SPACING["sm"]))
         
         # Wrap dropdown in bordered frame
@@ -351,29 +450,47 @@ class SettingsDialog(ctk.CTkFrame):
         groq_model_wrapper.grid(row=gq_row, column=1, sticky="ew", padx=(SPACING["md"], 0), pady=(SPACING["sm"], SPACING["sm"]))
 
         self.groq_model_var = ctk.StringVar(value=self.config.groq_model or "llama3-70b-8192")
-        self.groq_model_menu = ctk.CTkOptionMenu(
-            groq_model_wrapper,
-            variable=self.groq_model_var,
-            values=[self.config.groq_model] if self.config.groq_model else ["llama3-70b-8192"],
-            **get_option_menu_style()
+        self.groq_model_values = [self.config.groq_model] if self.config.groq_model else ["llama3-70b-8192"]
+        self.groq_selected_frame = ctk.CTkFrame(groq_model_wrapper, fg_color="transparent")
+        self.groq_selected_frame.pack(fill="x", padx=SPACING["sm"], pady=SPACING["sm"])
+        self.groq_selected_label = ctk.CTkLabel(
+            self.groq_selected_frame,
+            text=self.groq_model_var.get(),
+            font=(FONTS["family"], FONTS["body_size"]),
+            text_color=COLORS["text_secondary"],
+            anchor="w"
         )
-        self.groq_model_menu.pack(fill="x", padx=1, pady=1)
+        self.groq_selected_label.pack(side="left", fill="x", expand=True)
+        self.groq_choose_btn = ctk.CTkButton(
+            self.groq_selected_frame,
+            text="Choose",
+            width=72,
+            command=lambda: self._open_model_picker(
+                self.groq_model_values,
+                self.groq_model_var.get(),
+                self._select_groq_model,
+                "Choose Groq Model"
+            ),
+            **get_button_style("secondary")
+        )
+        self.groq_choose_btn.pack(side="right")
 
         gq_row += 1
         gq_hint = ctk.CTkLabel(
             self.groq_frame,
             text="Get a key from: https://console.groq.com/keys",
-            **get_label_style("muted")
+            font=(FONTS["family"], FONTS["small_size"]),
+            text_color=COLORS["text_secondary"]
         )
-        gq_hint.grid(row=gq_row, column=0, columnspan=2, sticky="w", pady=(0, SPACING["lg"]))
-        
+        gq_hint.grid(row=gq_row, column=0, columnspan=2, sticky="w", pady=(0, SPACING["sm"]))
+
         # --- OLLAMA Settings Frame ---
-        self.ollama_frame = ctk.CTkFrame(content, fg_color="transparent")
-        self.ollama_frame.grid(row=row, column=0, columnspan=2, sticky="ew")
+        self.ollama_frame = ctk.CTkFrame(connection_section, fg_color="transparent")
+        self.ollama_frame.grid(row=0, column=0, columnspan=2, sticky="ew")
         self.ollama_frame.grid_columnconfigure(1, weight=1)
         
         ol_row = 0
-        label_url = ctk.CTkLabel(self.ollama_frame, text="Base URL:", **get_label_style("body"))
+        label_url = self._create_field_label(self.ollama_frame, "Base URL:")
         label_url.grid(row=ol_row, column=0, sticky="w", pady=(0, SPACING["sm"]))
         
         # URL Container with Refresh Button
@@ -392,23 +509,18 @@ class SettingsDialog(ctk.CTkFrame):
             
         self.refresh_btn = ctk.CTkButton(
             url_container,
-            text="⟳",
-            width=35,
+            text="Test",
+            width=72,
             command=self._refresh_ollama_models,
             **get_button_style("secondary")
         )
         self.refresh_btn.grid(row=0, column=1)
 
-        self.ollama_status_label = ctk.CTkLabel(
-            url_container,
-            text="",
-            font=(FONTS["family"], FONTS["small_size"], "bold"),
-            text_color=COLORS["text_muted"]
-        )
+        self.ollama_status_label = self._create_status_label(url_container)
         self.ollama_status_label.grid(row=0, column=2, padx=(SPACING["sm"], 0))
             
         ol_row += 1
-        label_model = ctk.CTkLabel(self.ollama_frame, text="Model:", **get_label_style("body"))
+        label_model = self._create_field_label(self.ollama_frame, "Model:")
         label_model.grid(row=ol_row, column=0, sticky="w", pady=(SPACING["sm"], SPACING["sm"]))
         
         # Wrap dropdown in bordered frame
@@ -422,41 +534,48 @@ class SettingsDialog(ctk.CTkFrame):
         ollama_model_wrapper.grid(row=ol_row, column=1, sticky="ew", padx=(SPACING["md"], 0), pady=(SPACING["sm"], SPACING["sm"]))
         
         self.ollama_model_var = ctk.StringVar(value=self.config.ollama_model or "llama3.2")
-        self.ollama_model_menu = ctk.CTkOptionMenu(
-            ollama_model_wrapper,
-            variable=self.ollama_model_var,
-            values=[self.config.ollama_model] if self.config.ollama_model else ["llama3.2"],
-            **get_option_menu_style()
+        self.ollama_model_values = [self.config.ollama_model] if self.config.ollama_model else ["llama3.2"]
+        self.ollama_selected_frame = ctk.CTkFrame(ollama_model_wrapper, fg_color="transparent")
+        self.ollama_selected_frame.pack(fill="x", padx=SPACING["sm"], pady=SPACING["sm"])
+        self.ollama_selected_label = ctk.CTkLabel(
+            self.ollama_selected_frame,
+            text=self.ollama_model_var.get(),
+            font=(FONTS["family"], FONTS["body_size"]),
+            text_color=COLORS["text_secondary"],
+            anchor="w"
         )
-        self.ollama_model_menu.pack(fill="x", padx=1, pady=1)
+        self.ollama_selected_label.pack(side="left", fill="x", expand=True)
+        self.ollama_choose_btn = ctk.CTkButton(
+            self.ollama_selected_frame,
+            text="Choose",
+            width=72,
+            command=lambda: self._open_model_picker(
+                self.ollama_model_values,
+                self.ollama_model_var.get(),
+                self._select_ollama_model,
+                "Choose Ollama Model"
+            ),
+            **get_button_style("secondary")
+        )
+        self.ollama_choose_btn.pack(side="right")
         
         # Auto-populate models if available
         self._try_populate_ollama_models()
             
-        # Increment main row after frames
-        row += 1
-        
-        # Separator
-        sep1 = ctk.CTkFrame(content, fg_color=COLORS["border"], height=1)
-        sep1.grid(row=row, column=0, columnspan=2, sticky="ew", pady=SPACING["md"])
-        row += 1
-        
-        # Application Settings Section
-        app_header = ctk.CTkLabel(
-            content, 
-            text="📁 Application Settings",
-            font=(FONTS["family"], FONTS["subheading_size"], "bold"),
-            text_color=COLORS["text_primary"]
+        app_section = self._create_section_card(
+            content,
+            2,
+            "Application",
+            "Set local tools and workspace paths used during processing."
         )
-        app_header.grid(row=row, column=0, columnspan=2, sticky="w", pady=(SPACING["sm"], SPACING["sm"]))
-        row += 1
-        
+        row = 0
+
         # MKVToolnix Path
-        label1 = ctk.CTkLabel(content, text="MKVToolnix Path:", **get_label_style("body"))
+        label1 = ctk.CTkLabel(app_section, text="MKVToolnix Path:", **get_label_style("body"))
         label1.grid(row=row, column=0, sticky="w", pady=(0, SPACING["sm"]))
         
         row += 1
-        path_frame = ctk.CTkFrame(content, fg_color="transparent")
+        path_frame = ctk.CTkFrame(app_section, fg_color="transparent")
         path_frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, SPACING["md"]))
         path_frame.grid_columnconfigure(0, weight=1)
         
@@ -653,11 +772,12 @@ class SettingsDialog(ctk.CTkFrame):
         if manager.available_models and any(m.provider == "OLLAMA" for m in manager.available_models):
             models = [m.name for m in manager.available_models if m.provider == "OLLAMA"]
             if models:
-                self.ollama_model_menu.configure(values=models)
+                self.ollama_model_values = models
                 if self.config.ollama_model in models:
                     self.ollama_model_var.set(self.config.ollama_model)
                 elif models:
                     self.ollama_model_var.set(models[0])
+                self.ollama_selected_label.configure(text=self.ollama_model_var.get())
                 return
 
         # If no cache, trigger silent refresh
@@ -734,7 +854,7 @@ class SettingsDialog(ctk.CTkFrame):
             return
             
         if result and result.is_valid:
-            self.or_status_label.configure(text="● Online", text_color=COLORS["success"])
+            self.or_status_label.configure(text="Connected", text_color=COLORS["success"])
             self._show_toast("Connected to OpenRouter", "success")
             
             # Update models
@@ -745,135 +865,23 @@ class SettingsDialog(ctk.CTkFrame):
                 current = self.or_model_var.get()
                 if current not in self.or_available_models and self.or_available_models:
                      self.or_model_var.set(self.or_available_models[0])
-                     self.or_selected_label.configure(text=self.or_available_models[0])
-                else:
-                     self.or_selected_label.configure(text=current)
-                
-                # Expand and populate the model list
-                self._expand_model_list()
+                self.or_selected_label.configure(text=self.or_model_var.get())
         else:
-            self.or_status_label.configure(text="● Invalid Key", text_color=COLORS["error"])
+            self.or_status_label.configure(text="Invalid key", text_color=COLORS["error"])
             self._show_toast(result.message if result else "Validation failed", "error")
 
-    def _on_model_search(self, event):
-        """Filter models based on search text."""
-        query = self.or_model_search.get().lower()
-        filtered = [m for m in self.or_available_models if query in m.lower()]
-        self._populate_model_list(filtered)
-        
-        # Scroll to top
-        try:
-            self.or_model_list._parent_canvas.yview_moveto(0)
-        except Exception:
-            pass
-
-    def _populate_model_list(self, models, max_display=1000):
-        """Populate the inline model list with buttons (optimized)."""
-        # Cancel any pending batch loading
-        if hasattr(self, '_model_load_job') and self._model_load_job:
-            self.after_cancel(self._model_load_job)
-            self._model_load_job = None
-        
-        # Clear existing
-        for widget in self.or_model_list.winfo_children():
-            widget.destroy()
-        
-        if not models:
-            lbl = ctk.CTkLabel(
-                self.or_model_list, 
-                text="No models found", 
-                **get_label_style("muted")
-            )
-            lbl.pack(pady=SPACING["md"])
-            return
-        
-        current_model = self.or_model_var.get()
-        
-        # Limit models to prevent lag (show first N + message)
-        display_models = models[:max_display]
-        remaining = len(models) - max_display
-        
-        # Create buttons in batches to avoid freezing
-        self._pending_models = list(display_models)
-        self._current_model_for_list = current_model
-        self._remaining_count = remaining
-        self._create_model_buttons_batch()
-    
-    def _create_model_buttons_batch(self, batch_size=15):
-        """Create model buttons in small batches to prevent UI freeze."""
-        if not hasattr(self, '_pending_models') or not self._pending_models:
-            # Done loading, show remaining count if any
-            if hasattr(self, '_remaining_count') and self._remaining_count > 0:
-                more_label = ctk.CTkLabel(
-                    self.or_model_list,
-                    text=f"+ {self._remaining_count} more (use search to filter)",
-                    **get_label_style("muted")
-                )
-                more_label.pack(pady=SPACING["sm"])
-            return
-        
-        # Process a batch
-        batch = self._pending_models[:batch_size]
-        self._pending_models = self._pending_models[batch_size:]
-        current_model = self._current_model_for_list
-        
-        for model in batch:
-            is_selected = model == current_model
-            
-            btn = ctk.CTkButton(
-                self.or_model_list,
-                text=model,
-                anchor="w",
-                fg_color=COLORS["primary"] if is_selected else COLORS["bg_light"],
-                text_color=COLORS["bg_dark"] if is_selected else COLORS["text_primary"],
-                hover_color=COLORS["primary_hover"] if is_selected else COLORS["border"],
-                height=28,
-                corner_radius=RADIUS["sm"],
-                command=lambda m=model: self._select_model(m)
-            )
-            btn.pack(fill="x", pady=1, padx=2)
-        
-        # Schedule next batch
-        if self._pending_models:
-            self._model_load_job = self.after(5, self._create_model_buttons_batch)
-
     def _select_model(self, model: str):
-        """Handle model selection from inline list."""
+        """Handle OpenRouter model selection."""
         self.or_model_var.set(model)
         self.or_selected_label.configure(text=model)
-        
-        # Clear search and collapse the list
-        self.or_model_search.delete(0, "end")
-        self._collapse_model_list()
 
-    def _toggle_model_list(self):
-        """Toggle model list expand/collapse."""
-        if self.or_model_list_expanded:
-            self._collapse_model_list()
-        else:
-            self._expand_model_list()
+    def _select_groq_model(self, model: str):
+        self.groq_model_var.set(model)
+        self.groq_selected_label.configure(text=model)
 
-    def _expand_model_list(self):
-        """Expand the model list."""
-        if self.or_model_list_expanded:
-            return
-        
-        self.or_model_list_expanded = True
-        self.or_expand_btn.configure(text="▲")
-        self.or_expand_section.pack(fill="both", expand=True)
-        
-        # Populate list if models available
-        if self.or_available_models:
-            self._populate_model_list(self.or_available_models)
-
-    def _collapse_model_list(self):
-        """Collapse the model list."""
-        if not self.or_model_list_expanded:
-            return
-        
-        self.or_model_list_expanded = False
-        self.or_expand_btn.configure(text="▼")
-        self.or_expand_section.pack_forget()
+    def _select_ollama_model(self, model: str):
+        self.ollama_model_var.set(model)
+        self.ollama_selected_label.configure(text=model)
 
     def _on_ollama_refresh_result(self, success, result, silent):
         """Handle refresh result."""
@@ -885,18 +893,19 @@ class SettingsDialog(ctk.CTkFrame):
         if success:
             models = result
             if models:
-                self.ollama_model_menu.configure(values=models)
+                self.ollama_model_values = models
                 self.ollama_model_var.set(models[0])
+                self.ollama_selected_label.configure(text=self.ollama_model_var.get())
                 if not silent:
                     self._show_toast("OLLAMA Connected", "success")
             else:
                 if not silent:
                     self._show_toast("Connected but no models found", "warning")
-            self.ollama_status_label.configure(text="● Online", text_color=COLORS["success"])
+            self.ollama_status_label.configure(text="Connected", text_color=COLORS["success"])
         else:
             if not silent:
                 self._show_toast(f"Connection failed: {result}", "error")
-            self.ollama_status_label.configure(text="● Offline", text_color=COLORS["error"])
+            self.ollama_status_label.configure(text="Offline", text_color=COLORS["error"])
 
     def _validate_groq(self):
         """Validate Groq API Key and fetch models."""
@@ -937,15 +946,16 @@ class SettingsDialog(ctk.CTkFrame):
         if success:
             models = result
             if models:
-                self.groq_model_menu.configure(values=models)
+                self.groq_model_values = models
                 # If current model not in list, select first
                 if self.groq_model_var.get() not in models:
                     self.groq_model_var.set(models[0])
+                self.groq_selected_label.configure(text=self.groq_model_var.get())
                 
                 self._show_toast("Groq Connected", "success")
-            self.groq_status_label.configure(text="● Online", text_color=COLORS["success"])
+            self.groq_status_label.configure(text="Connected", text_color=COLORS["success"])
         else:
-            self.groq_status_label.configure(text="● Error", text_color=COLORS["error"])
+            self.groq_status_label.configure(text="Error", text_color=COLORS["error"])
             self._show_toast(f"Error: {result}", "error")
             
     def _show_toast(self, message, type="info"):

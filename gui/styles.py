@@ -6,75 +6,71 @@ Defines colors, fonts, and theme settings.
 import customtkinter as ctk
 
 
-# Color Palette - Minimal (3-4 Core Colors, No Gradients)
+# Color Palette
 COLORS = {
-    # === CORE COLORS (4 only) ===
-    
-    # 1. Background (Blacks & Grays)
-    "bg_dark": "#0b0b0b",            # Main background
-    "bg_medium": "#1a1a1a",          # Cards, panels
+    # Background surfaces
+    "bg_dark": "#171717",            # Main background
+    "bg_medium": "#1f1f1f",          # Cards, panels
     "bg_light": "#2a2a2a",           # Inputs, hover states
-    
-    # 2. Text (Light Grays)
-    "text_primary": "#e8eaed",       # Main text
-    "text_secondary": "#9aa0a6",     # Secondary text
-    "text_muted": "#71717a",         # Muted text
-    
-    # 3. Accent Blue (Interactive elements)
-    "accent": "#3B82F6",             # Primary accent - buttons, links, active states
-    "accent_hover": "#60A5FA",       # Lighter blue for hover
-    "accent_bg": "#1E3A5F",          # Dark blue background
-    
-    # 4. Success Green (Completion, validation)
-    "success": "#00e676",            # Success state, completed items
-    "success_dim": "#10b981",        # Dimmer green for subtle states
-    
-    # === DERIVED COLORS (from core palette) ===
-    
-    # Borders (from backgrounds)
-    "border": "#2a2a2a",             # Same as bg_light
-    "border_light": "#3a3a3a",       # Slightly lighter
-    
-    # Status colors (minimal, using core colors)
-    "error": "#ff1744",              # Red for errors (only additional color needed)
-    "warning": "#EAB308",            # Yellow for warnings (only additional color needed)
-    
-    # Background colors for status (using existing colors)
-    "success_bg": "#14532D",         # Dark green background
-    "error_bg": "#7F1D1D",           # Dark red background
-    "warning_bg": "#713F12",         # Dark yellow background
-    "info_bg": "#1E3A5F",            # Dark blue background (same as accent_bg)
-    
-    # Aliases for consistency
-    "primary": "#e8eaed",            # Alias for text_primary
-    "primary_hover": "#f0f0f0",      # Lighter text for hover states
-    "primary_light": "#c0c0c0",      # Muted light text
-    "highlight": "#e8eaed",          # Alias for text_primary
-    "info": "#3B82F6",               # Alias for accent
-    
-    # Step states (using core colors)
-    "step_inactive": "#71717a",      # text_muted
-    "step_active": "#3B82F6",        # accent
-    "step_completed": "#00e676",     # success
-    "step_active_bg": "#1a1a1a",     # bg_medium
-    
-    # Syntax highlighting (using core colors)
-    "syntax_number": "#60A5FA",      # accent_hover
-    "syntax_timestamp": "#00e676",   # success
-    "syntax_arrow": "#9aa0a6",       # text_secondary
-    "syntax_text": "#e8eaed",        # text_primary
-    "syntax_error": "#ff1744",       # error
-    "syntax_comment": "#71717a",     # text_muted
+
+    # Text
+    "text_primary": "#ececec",       # Main text
+    "text_secondary": "#b3b3b3",     # Secondary text
+    "text_muted": "#7d7d7d",         # Muted text
+
+    # Accent
+    "accent": "#d4d4d4",             # Primary accent - subtle neutral highlight
+    "accent_hover": "#f2f2f2",       # Hover accent
+    "accent_bg": "#2f2f2f",          # Accent surface
+
+    # Success
+    "success": "#32d79f",            # Success state
+    "success_dim": "#29b383",        # Dim success state
+
+    # Borders / depth
+    "border": "#323232",
+    "border_light": "#454545",
+
+    # Status colors
+    "error": "#ff6b6b",
+    "warning": "#d9b15f",
+
+    # Status backgrounds
+    "success_bg": "#173228",
+    "error_bg": "#4a2528",
+    "warning_bg": "#4a3a1f",
+    "info_bg": "#303030",
+
+    # Aliases
+    "primary": "#ececec",
+    "primary_hover": "#ffffff",
+    "primary_light": "#d6d6d6",
+    "highlight": "#ececec",
+    "info": "#9bbcff",
+
+    # Step states
+    "step_inactive": "#707070",
+    "step_active": "#ececec",
+    "step_completed": "#32d79f",
+    "step_active_bg": "#1f1f1f",
+
+    # Syntax highlighting
+    "syntax_number": "#9bbcff",
+    "syntax_timestamp": "#32d79f",
+    "syntax_arrow": "#b3b3b3",
+    "syntax_text": "#ececec",
+    "syntax_error": "#ff6b6b",
+    "syntax_comment": "#7d7d7d",
 }
 
 # Font settings
 FONTS = {
-    "family": "Consolas",        # Terminal-style monospace font
+    "family": "Segoe UI",        # Softer UI font for app chrome and forms
     "heading_size": 14,          # Increased from 11
     "subheading_size": 12,       # Increased from 10
     "body_size": 12,             # Increased from 10
     "small_size": 11,            # Increased from 9
-    "mono_family": "Consolas",   # Monospace
+    "mono_family": "Consolas",   # Monospace for logs/editor content
 }
 
 # Spacing - Enhanced System
@@ -109,19 +105,19 @@ def get_button_style(variant: str = "primary") -> dict:
         "primary": {
             "fg_color": COLORS["primary"],
             "hover_color": COLORS["primary_hover"],
-            "text_color": "#09090B",  # Dark text on white button
+            "text_color": "#0f1419",
             "corner_radius": RADIUS["md"],
         },
         "secondary": {
             "fg_color": COLORS["bg_light"],
-            "hover_color": COLORS["border"],
+            "hover_color": COLORS["border_light"],
             "text_color": COLORS["text_primary"],
             "corner_radius": RADIUS["md"],
         },
         "success": {
             "fg_color": COLORS["success"],
             "hover_color": COLORS["success_bg"],
-            "text_color": "#09090B",  # Dark text on green button
+            "text_color": "#0f1419",
             "corner_radius": RADIUS["md"],
         },
         "danger": {
@@ -139,7 +135,7 @@ def get_button_style(variant: str = "primary") -> dict:
         "info": {
             "fg_color": COLORS["info"],
             "hover_color": COLORS["info_bg"],
-            "text_color": COLORS["text_primary"],
+            "text_color": "#f7fbff",
             "corner_radius": RADIUS["md"],
         },
     }
@@ -177,7 +173,7 @@ def get_frame_style(variant: str = "default") -> dict:
             "corner_radius": RADIUS["lg"],
         },
         "card": {
-            "fg_color": COLORS["bg_medium"],  # Changed from bg_card
+            "fg_color": COLORS["bg_medium"],
             "corner_radius": RADIUS["lg"],
         },
         "transparent": {

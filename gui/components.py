@@ -65,28 +65,52 @@ class CustomTitleBar(ctk.CTkFrame):
     def _setup_ui(self):
         """Setup title bar UI."""
         # Use smaller height for dialogs
-        bar_height = 22 if self.is_dialog else 30
+        bar_height = 22 if self.is_dialog else 40
         btn_height = 20 if self.is_dialog else 30
         btn_width = 30 if self.is_dialog else 40
         
         title_font_size = 9 if self.is_dialog else FONTS["body_size"] - 2
         
         self.configure(height=bar_height)
-        self.pack_propagate(False)
+        self.grid_propagate(False)
         self.grid_columnconfigure(1, weight=1)
         
         # Left side - App icon and title
         left_frame = ctk.CTkFrame(self, fg_color="transparent")
         left_frame.grid(row=0, column=0, sticky="w", padx=SPACING["md"], pady=SPACING["sm"])
+
+        if not self.is_dialog:
+            self.brand_dot = ctk.CTkFrame(
+                left_frame,
+                width=12,
+                height=12,
+                corner_radius=6,
+                fg_color=COLORS["accent"]
+            )
+            self.brand_dot.pack(side="left", padx=(0, SPACING["sm"]))
+            self.brand_dot.pack_propagate(False)
         
         # Title
         self.title_label = ctk.CTkLabel(
             left_frame,
-            text=f"{self.title_text} {self.version}".strip(),
+            text=self.title_text,
             font=(FONTS["family"], FONTS["heading_size"], "bold"),
             text_color=COLORS["text_primary"]
         )
         self.title_label.pack(side="left")
+
+        if self.version:
+            self.version_badge = ctk.CTkLabel(
+                left_frame,
+                text=self.version,
+                font=(FONTS["family"], FONTS["small_size"], "bold"),
+                text_color=COLORS["text_secondary"],
+                fg_color=COLORS["bg_light"],
+                corner_radius=RADIUS["xl"],
+                padx=SPACING["sm"],
+                pady=2
+            )
+            self.version_badge.pack(side="left", padx=(SPACING["sm"], 0))
         
         # Center spacer (draggable area)
         self.drag_area = ctk.CTkFrame(self, fg_color="transparent")
@@ -100,7 +124,7 @@ class CustomTitleBar(ctk.CTkFrame):
                 font=(FONTS["family"], FONTS["small_size"]),
                 text_color=COLORS["text_muted"]
             )
-            self.api_status.pack(side="right", padx=SPACING["md"])
+            self.api_status.pack(side="right", padx=SPACING["md"], pady=(2, 0))
         
         # Right side - Window controls
         controls_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -303,6 +327,7 @@ class CollapsibleFrame(ctk.CTkFrame):
         super().__init__(master, **get_frame_style("card"), **kwargs)
         self.expanded = expanded
         self.title = title
+        self.configure(border_width=1, border_color=COLORS["border"])
         
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)  # Content row
@@ -310,7 +335,16 @@ class CollapsibleFrame(ctk.CTkFrame):
         # Header Frame
         self.header_frame = ctk.CTkFrame(self, fg_color="transparent", height=40)
         self.header_frame.grid(row=0, column=0, sticky="ew", padx=SPACING["md"], pady=(SPACING["sm"], 0))
-        self.header_frame.columnconfigure(2, weight=1) # Spacer
+        self.header_frame.columnconfigure(2, weight=1)
+
+        self.accent_bar = ctk.CTkFrame(
+            self.header_frame,
+            width=4,
+            height=22,
+            corner_radius=RADIUS["sm"],
+            fg_color=COLORS["accent"]
+        )
+        self.accent_bar.grid(row=0, column=0, sticky="w", padx=(0, SPACING["sm"]))
 
         # Toggle Button (Arrow)
         self.toggle_btn = ctk.CTkButton(
@@ -319,12 +353,12 @@ class CollapsibleFrame(ctk.CTkFrame):
             width=24,
             height=24,
             fg_color="transparent",
-            hover_color=COLORS["bg_medium"],
+            hover_color=COLORS["bg_light"],
             text_color=COLORS["text_secondary"],
             command=self.toggle,
             font=(FONTS["family"], 16)
         )
-        self.toggle_btn.grid(row=0, column=0, sticky="w")
+        self.toggle_btn.grid(row=0, column=1, sticky="w")
         
         # Title Label
         self.title_lbl = ctk.CTkLabel(
@@ -332,7 +366,7 @@ class CollapsibleFrame(ctk.CTkFrame):
             text=title,
             **get_label_style("subheading")
         )
-        self.title_lbl.grid(row=0, column=1, sticky="w", padx=SPACING["sm"])
+        self.title_lbl.grid(row=0, column=2, sticky="w", padx=SPACING["sm"])
 
         # Content Frame
         self.content_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -355,7 +389,7 @@ class CollapsibleFrame(ctk.CTkFrame):
             
     def add_widget_to_header(self, widget, **grid_kwargs):
         """Add a widget (like a badge) to the header (right side)."""
-        widget.grid(row=0, column=3+len(self.header_frame.grid_slaves(row=0)), **grid_kwargs)
+        widget.grid(row=0, column=4 + len(self.header_frame.grid_slaves(row=0)), **grid_kwargs)
         widget.lift()
 
 
@@ -407,35 +441,57 @@ class FileDropZone(ctk.CTkFrame):
         )
         self.inner_frame.grid_columnconfigure(0, weight=1)
         self.inner_frame.grid_rowconfigure(0, weight=1)
+        self.inner_frame.configure(border_width=1, border_color=COLORS["border_light"])
+
+        self.hero_badge = ctk.CTkLabel(
+            self.inner_frame,
+            text="Quick Start",
+            font=(FONTS["family"], FONTS["small_size"], "bold"),
+            text_color=COLORS["text_secondary"],
+            fg_color=COLORS["accent_bg"],
+            corner_radius=RADIUS["xl"],
+            padx=SPACING["sm"],
+            pady=2
+        )
+        self.hero_badge.grid(row=0, column=0, sticky="nw", padx=SPACING["lg"], pady=SPACING["lg"])
         
         # Content container
         self.content = ctk.CTkFrame(self.inner_frame, fg_color="transparent")
-        self.content.grid(row=0, column=0, pady=SPACING["lg"]) # Reduced padding
+        self.content.grid(row=0, column=0, pady=SPACING["xl"])
         
         # Icon/emoji
         self.icon_label = ctk.CTkLabel(
             self.content,
             text="📁",
-            font=(FONTS["family"], 32), # Smaller icon
-            text_color=COLORS["text_muted"]
+            font=(FONTS["family"], 36),
+            text_color=COLORS["accent_hover"]
         )
         self.icon_label.pack(pady=(0, SPACING["xs"]))
         
         # Main text
         self.main_label = ctk.CTkLabel(
             self.content,
-            text="Click to select MKV file",
-            **get_label_style("body") # Smaller font
+            text="Drop your MKV file to begin",
+            font=(FONTS["family"], FONTS["heading_size"] + 2, "bold"),
+            text_color=COLORS["text_primary"]
         )
         self.main_label.pack()
-        
+
         # Sub text
         self.sub_label = ctk.CTkLabel(
             self.content,
-            text="or drag & drop",
+            text="Click anywhere here or drag and drop a video file",
             **get_label_style("muted")
         )
         self.sub_label.pack(pady=(SPACING["xs"], 0))
+
+        self.helper_label = ctk.CTkLabel(
+            self.content,
+            text="Sub-auto will scan subtitle tracks and prepare translation settings for you.",
+            font=(FONTS["family"], FONTS["small_size"]),
+            text_color=COLORS["text_secondary"]
+        )
+        self.helper_label.pack(pady=(SPACING["sm"], 0))
         
         # Make clickable
         self._bind_click_recursive(self)
@@ -454,8 +510,8 @@ class FileDropZone(ctk.CTkFrame):
         # Thumbnail placeholder / Icon
         icon_frame = ctk.CTkFrame(
             container, 
-            width=40, height=40, 
-            fg_color=COLORS["bg_dark"],
+            width=44, height=44, 
+            fg_color=COLORS["accent_bg"],
             corner_radius=RADIUS["md"]
         )
         icon_frame.grid(row=0, column=0, sticky="w", padx=(0, SPACING["md"]))
@@ -475,7 +531,8 @@ class FileDropZone(ctk.CTkFrame):
         name_lbl = ctk.CTkLabel(
             info_frame,
             text=path.name,
-            **get_label_style("body")
+            font=(FONTS["family"], FONTS["body_size"], "bold"),
+            text_color=COLORS["text_primary"]
         )
         name_lbl.pack(anchor="w")
         
@@ -1819,7 +1876,7 @@ class LogPanel(ctk.CTkFrame):
         # Log text area
         self.log_text = ctk.CTkTextbox(
             self.content_frame,
-            font=("Consolas", 12),
+            font=(FONTS["mono_family"], 12),
             activate_scrollbars=True,
             fg_color=COLORS["bg_dark"],
             text_color=COLORS["text_secondary"],
@@ -2025,9 +2082,9 @@ class ModelSelectorDialog(ctk.CTkToplevel):
                 self.list_frame,
                 text=model,
                 anchor="w",
-                fg_color=COLORS["primary"] if is_selected else COLORS["bg_light"],
-                text_color=COLORS["bg_dark"] if is_selected else COLORS["text_primary"],
-                hover_color=COLORS["primary_hover"] if is_selected else COLORS["border"],
+                fg_color=COLORS["accent_bg"] if is_selected else COLORS["bg_light"],
+                text_color=COLORS["text_primary"],
+                hover_color=COLORS["border_light"] if is_selected else COLORS["border"],
                 height=35,
                 command=lambda m=model: self._on_select(m)
             )
@@ -2044,7 +2101,8 @@ class ModelSelectorDialog(ctk.CTkToplevel):
             self.list_frame._parent_canvas.yview_moveto(0)
         except Exception:
             pass  # Ignore if canvas not available
-        
+
+    def _on_select(self, model: str):
         if self.on_select_callback:
             self.on_select_callback(model)
         self.destroy()
@@ -2850,64 +2908,57 @@ class HorizontalStepperItem(ctk.CTkFrame):
         self._setup_ui()
         
     def _setup_ui(self):
-        # Style 3: Minimalist Underline
-        # - Text only (with number)
-        # - Active: Highlighted text + Underline bar
-        # - Completed: Green text
-        # - Inactive: Gray text
-        
-        # Colors & Font
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=0)
+        self.grid_rowconfigure(1, weight=0)
+
         if self.is_active:
             text_color = COLORS["text_primary"]
             font_weight = "bold"
-            underline_color = COLORS["info"] # Blue/Cyan for active
+            underline_color = COLORS["accent"]
         elif self.is_completed:
-            text_color = COLORS["success"]
+            text_color = COLORS["text_primary"]
             font_weight = "normal"
-            underline_color = "transparent"
+            underline_color = COLORS["success_dim"]
         else:
             text_color = COLORS["text_muted"]
             font_weight = "normal"
-            underline_color = "transparent"
-            
-        # Main Container Layout
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1) # Text area
-        self.grid_rowconfigure(1, weight=0) # Underline area
-        
-        # Text Content
-        # Format: "1. Title"
-        display_text = f"{self.step_number}. {self.title}"
-        
+            underline_color = COLORS["border"]
+
+        self.configure(
+            fg_color="transparent",
+            corner_radius=0,
+            border_width=0,
+            height=28
+        )
+        self.grid_propagate(False)
+
         self.title_label = ctk.CTkLabel(
             self,
-            text=display_text,
-            font=(FONTS["family"], FONTS["body_size"], font_weight),
+            text=self.title,
+            font=(FONTS["family"], FONTS["body_size"] - 1, font_weight),
             text_color=text_color
         )
-        self.title_label.grid(row=0, column=0, padx=SPACING["md"], pady=(2, 2))
-        
-        # Underline Bar (Active Only)
-        if self.is_active:
-            self.underline = ctk.CTkFrame(
-                self,
-                width=0, # Will expand with sticky=ew
-                height=3,
-                fg_color=underline_color,
-                corner_radius=2
-            )
-            self.underline.grid(row=1, column=0, sticky="ew", padx=SPACING["md"])
+        self.title_label.grid(row=0, column=0, sticky="w", padx=(0, SPACING["md"]), pady=(0, 3))
+
+        self.underline = ctk.CTkFrame(
+            self,
+            height=2 if self.is_active else 1,
+            corner_radius=0,
+            fg_color=underline_color,
+            width=1
+        )
+        self.underline.grid(row=1, column=0, sticky="ew", padx=(0, SPACING["md"]))
             
         # Click binding
         if self.on_click:
             self.bind("<Button-1>", lambda e: self.on_click(self.step_number))
             self.title_label.bind("<Button-1>", lambda e: self.on_click(self.step_number))
+            self.underline.bind("<Button-1>", lambda e: self.on_click(self.step_number))
             
             self.configure(cursor="hand2")
             self.title_label.configure(cursor="hand2")
-            if hasattr(self, 'underline'):
-                self.underline.bind("<Button-1>", lambda e: self.on_click(self.step_number))
-                self.underline.configure(cursor="hand2")
+            self.underline.configure(cursor="hand2")
 
 
 class HorizontalStepper(ctk.CTkFrame):
@@ -2939,7 +2990,7 @@ class HorizontalStepper(ctk.CTkFrame):
             
         # Centering container
         container = ctk.CTkFrame(self, fg_color="transparent")
-        container.pack(expand=True, anchor="center")
+        container.pack(side="left", anchor="center")
         
         for i, title in enumerate(self.steps, 1):
             is_active = (i == self.current_step)
@@ -2955,7 +3006,7 @@ class HorizontalStepper(ctk.CTkFrame):
                 is_last=is_last,
                 on_click=self._handle_click
             )
-            item.pack(side="left")
+            item.pack(side="left", padx=(0, SPACING["md"]), pady=0)
             
     def _handle_click(self, step_number: int):
         if self.on_step_change:
@@ -2988,6 +3039,153 @@ class HorizontalStepper(ctk.CTkFrame):
     def clear_step_description(self, step_number: int):
         pass
             
+    def set_completed_steps(self, steps: List[int]):
+        self.completed_steps = set(steps)
+        self._refresh()
+
+
+class ContentProgressHeader(ctk.CTkFrame):
+    """Lightweight progress header shown above page content."""
+
+    def __init__(
+        self,
+        master,
+        steps: List[str],
+        current_step: int = 1,
+        on_step_change: Optional[Callable[[int], None]] = None,
+        **kwargs
+    ):
+        super().__init__(
+            master,
+            fg_color=COLORS["bg_medium"],
+            corner_radius=RADIUS["lg"],
+            border_width=1,
+            border_color=COLORS["border"],
+            **kwargs
+        )
+        self.steps = steps
+        self.current_step = current_step
+        self.on_step_change = on_step_change
+        self.completed_steps = set()
+        self.step_descriptions = {}
+
+        self.grid_columnconfigure(0, weight=1)
+        self._build_ui()
+        self._refresh()
+
+    def _build_ui(self):
+        self.kicker_label = ctk.CTkLabel(
+            self,
+            text="",
+            font=(FONTS["family"], FONTS["small_size"], "bold"),
+            text_color=COLORS["accent_hover"]
+        )
+        self.kicker_label.grid(row=0, column=0, sticky="w", padx=SPACING["lg"], pady=(SPACING["md"], 0))
+
+        self.title_label = ctk.CTkLabel(
+            self,
+            text="",
+            font=(FONTS["family"], FONTS["heading_size"] + 4, "bold"),
+            text_color=COLORS["text_primary"]
+        )
+        self.title_label.grid(row=1, column=0, sticky="w", padx=SPACING["lg"], pady=(SPACING["xs"], 0))
+
+        self.description_label = ctk.CTkLabel(
+            self,
+            text="",
+            font=(FONTS["family"], FONTS["body_size"]),
+            text_color=COLORS["text_secondary"]
+        )
+        self.description_label.grid(row=2, column=0, sticky="w", padx=SPACING["lg"], pady=(SPACING["xs"], SPACING["sm"]))
+
+        self.nav_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.nav_frame.grid(row=3, column=0, sticky="w", padx=SPACING["lg"], pady=(0, SPACING["md"]))
+
+    def _refresh(self):
+        safe_step = min(max(self.current_step, 1), len(self.steps))
+        title = self.steps[safe_step - 1]
+        description = self.step_descriptions.get(safe_step, self._default_description(safe_step))
+
+        self.kicker_label.configure(text=f"STEP {safe_step} OF {len(self.steps)}")
+        self.title_label.configure(text=title)
+        self.description_label.configure(text=description)
+
+        for widget in self.nav_frame.winfo_children():
+            widget.destroy()
+
+        for index, step_title in enumerate(self.steps, 1):
+            is_active = index == safe_step
+            is_completed = (index in self.completed_steps) or (index < safe_step)
+
+            if is_active:
+                text_color = COLORS["text_primary"]
+                fg_color = COLORS["bg_light"]
+            elif is_completed:
+                text_color = COLORS["success"]
+                fg_color = "transparent"
+            else:
+                text_color = COLORS["text_muted"]
+                fg_color = "transparent"
+
+            label = ctk.CTkLabel(
+                self.nav_frame,
+                text=step_title,
+                font=(FONTS["family"], FONTS["small_size"], "bold" if is_active else "normal"),
+                text_color=text_color,
+                fg_color=fg_color,
+                corner_radius=RADIUS["sm"],
+                padx=SPACING["sm"],
+                pady=3
+            )
+            label.pack(side="left")
+
+            if self.on_step_change:
+                label.bind("<Button-1>", lambda e, step=index: self.on_step_change(step))
+                label.configure(cursor="hand2")
+
+            if index < len(self.steps):
+                sep = ctk.CTkLabel(
+                    self.nav_frame,
+                    text="/",
+                    font=(FONTS["family"], FONTS["small_size"]),
+                    text_color=COLORS["text_muted"]
+                )
+                sep.pack(side="left", padx=(SPACING["xs"], SPACING["xs"]))
+
+    def _default_description(self, step_index: int) -> str:
+        defaults = {
+            1: "Choose the MKV file you want to process.",
+            2: "Pick subtitle track and translation settings.",
+            3: "Run the translation process and monitor progress.",
+            4: "Review translated subtitles before final merge.",
+        }
+        return defaults.get(step_index, "")
+
+    def set_step(self, step_number: int):
+        if 1 <= step_number <= len(self.steps) + 1:
+            self.current_step = step_number
+            self._refresh()
+
+    def update_step(self, step_number: int, description: str = None, is_complete: bool = False):
+        if 1 <= step_number <= len(self.steps):
+            if description is not None:
+                self.step_descriptions[step_number] = description
+            if is_complete:
+                self.completed_steps.add(step_number)
+            else:
+                self.completed_steps.discard(step_number)
+            self._refresh()
+
+    def update_step_description(self, step_number: int, description: str):
+        if 1 <= step_number <= len(self.steps):
+            self.step_descriptions[step_number] = description
+            self._refresh()
+
+    def clear_step_description(self, step_number: int):
+        if step_number in self.step_descriptions:
+            del self.step_descriptions[step_number]
+            self._refresh()
+
     def set_completed_steps(self, steps: List[int]):
         self.completed_steps = set(steps)
         self._refresh()

@@ -23,7 +23,8 @@ from .styles import (
 )
 from .components import (
     FileDropZone, TrackListItem, ProgressPanel, SettingsRow, StatusBadge, APIKeyPanel, SummaryWindow,
-    LogPanel, CollapsibleFrame, CustomTitleBar, SubtitleEditor, VerticalStepper, HorizontalStepper
+    LogPanel, CollapsibleFrame, CustomTitleBar, SubtitleEditor, VerticalStepper, HorizontalStepper,
+    ContentProgressHeader
 )
 from .settings_dialog import SettingsDialog
 from .toast import ToastManager
@@ -164,20 +165,24 @@ class SubAutoApp(ctk.CTk):
         self.title_bar = CustomTitleBar(self, title=self.APP_TITLE, version=self.APP_VERSION, on_settings=self._open_settings, on_history=self._open_history, show_settings=True, show_history=True)
         self.title_bar.grid(row=0, column=0, sticky="ew")
         
-        # Stepper
-        self.stepper = HorizontalStepper(self.title_bar.get_center_frame(), steps=["Select File", "Configuration", "Translation", "Review"], current_step=1, on_step_change=self._on_step_change)
-        self.stepper.pack(side="left", expand=True, fill="y", padx=SPACING["md"])
-        
         # Main container
         self.main_container = ctk.CTkFrame(self, fg_color="transparent")
         self.main_container.grid(row=1, column=0, sticky="nsew")
         self.main_container.grid_columnconfigure(0, weight=1)
-        self.main_container.grid_rowconfigure(0, weight=1)
+        self.main_container.grid_rowconfigure(1, weight=1)
+
+        self.progress_header = ContentProgressHeader(
+            self.main_container,
+            steps=["Select File", "Configuration", "Translation", "Review"],
+            current_step=1,
+            on_step_change=self._on_step_change
+        )
+        self.progress_header.grid(row=0, column=0, sticky="ew", padx=SPACING["lg"], pady=(SPACING["md"], 0))
 
         self.content_area = ctk.CTkFrame(self.main_container, fg_color="transparent")
-        self.content_area.grid(row=0, column=0, sticky="nsew", padx=SPACING["lg"], pady=SPACING["md"])
+        self.content_area.grid(row=1, column=0, sticky="nsew", padx=SPACING["lg"], pady=SPACING["md"])
         self.content_area.grid_columnconfigure(0, weight=1)
-        self.content_area.grid_rowconfigure(0, weight=1)
+        self.content_area.grid_rowconfigure(1, weight=1)
 
         # Processing View
         self.processing_view = ProcessingView(self.content_area, logger_instance=self.logger, on_pause=self._pause_translation, on_cancel=self._cancel_translation)
@@ -192,7 +197,7 @@ class SubAutoApp(ctk.CTk):
         self.step_frames = [view1, view2, self.processing_view, view4]
         
         # Step Controller
-        self.step_controller = StepController(self.app_state, self.stepper, self.step_frames)
+        self.step_controller = StepController(self.app_state, self.progress_header, self.step_frames)
         self.step_controller.set_callback(self._on_handle_step_change_ui)
 
         # Footer
@@ -495,7 +500,7 @@ class SubAutoApp(ctk.CTk):
         
         # Switch to Step 3
         # Use set_step to update UI selection
-        self.stepper.set_step(3)
+        self.progress_header.set_step(3)
         self._update_step_states() # Update completion status
         self.step_controller.show_step(3)
         
@@ -522,7 +527,7 @@ class SubAutoApp(ctk.CTk):
         # For general exit, let's assume we just update the view
         elif self.app_state.active_translator is None:
              # Just refresh current step
-             self.step_controller.show_step(self.stepper.current_step)
+             self.step_controller.show_step(self.progress_header.current_step)
     
     def _start_translation(self):
         """Start the translation process by asking for title confirmation first."""
@@ -654,7 +659,7 @@ class SubAutoApp(ctk.CTk):
     
     def _on_translation_summary_ready(self, summary_data: dict):
         """Callback from translation controller when summary is ready for UI."""
-        self.stepper.set_step(5)
+        self.progress_header.set_step(5)
         self.summary_view = SummaryWindow(
             self,
             **summary_data,

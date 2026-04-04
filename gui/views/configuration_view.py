@@ -24,10 +24,43 @@ class ConfigurationView(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent", **kwargs)
         
         self.grid_columnconfigure(0, weight=1)
+
+        self.header_card = ctk.CTkFrame(
+            self,
+            fg_color=COLORS["bg_medium"],
+            corner_radius=RADIUS["lg"],
+            border_width=1,
+            border_color=COLORS["border"]
+        )
+        self.header_card.pack(fill="x", pady=(0, SPACING["md"]))
+
+        self.header_label = ctk.CTkLabel(
+            self.header_card,
+            text="Configure translation",
+            font=(FONTS["family"], FONTS["heading_size"] + 4, "bold"),
+            text_color=COLORS["text_primary"]
+        )
+        self.header_label.pack(anchor="w", padx=SPACING["lg"], pady=(SPACING["lg"], SPACING["xs"]))
+
+        self.header_subtitle = ctk.CTkLabel(
+            self.header_card,
+            text="Pick the subtitle track, confirm languages, then connect your model.",
+            font=(FONTS["family"], FONTS["body_size"]),
+            text_color=COLORS["text_secondary"]
+        )
+        self.header_subtitle.pack(anchor="w", padx=SPACING["lg"], pady=(0, SPACING["lg"]))
         
         # === subtitle tracks section ===
         self.tracks_section = CollapsibleFrame(self, title="Subtitle Tracks")
         self.tracks_section.pack(fill="x", pady=(0, SPACING["md"]))
+
+        self.tracks_hint = ctk.CTkLabel(
+            self.tracks_section.header_frame,
+            text="Choose one embedded subtitle stream",
+            font=(FONTS["family"], FONTS["small_size"]),
+            text_color=COLORS["text_muted"]
+        )
+        self.tracks_hint.grid(row=0, column=3, sticky="e", padx=(SPACING["sm"], 0))
         
         content = self.tracks_section.content_frame
         
@@ -47,6 +80,14 @@ class ConfigurationView(ctk.CTkFrame):
         # === Translation Options Section ===
         self.options_section = CollapsibleFrame(self, title="Translation Settings")
         self.options_section.pack(fill="x", pady=(0, SPACING["md"]))
+
+        self.options_hint = ctk.CTkLabel(
+            self.options_section.header_frame,
+            text="Review context before starting",
+            font=(FONTS["family"], FONTS["small_size"]),
+            text_color=COLORS["text_muted"]
+        )
+        self.options_hint.grid(row=0, column=3, sticky="e", padx=(SPACING["sm"], 0))
         
         opts_content = self.options_section.content_frame
         opts_content.grid_columnconfigure((0, 1), weight=1)
@@ -72,7 +113,13 @@ class ConfigurationView(ctk.CTkFrame):
         self.target_lang_row.grid(row=0, column=1, sticky="ew", padx=(SPACING["sm"], 0), pady=SPACING["xs"])
         
         # Model selection row
-        self.model_frame = ctk.CTkFrame(opts_content, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
+        self.model_frame = ctk.CTkFrame(
+            opts_content,
+            fg_color=COLORS["bg_dark"],
+            corner_radius=RADIUS["md"],
+            border_width=1,
+            border_color=COLORS["border"]
+        )
         self.model_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(SPACING["md"], 0))
         self.model_frame.grid_columnconfigure(2, weight=1)
         

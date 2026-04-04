@@ -94,7 +94,7 @@ class ProcessingView(ctk.CTkFrame):
         # Progress bar
         self.progress_bar = SegmentedProgressBar(
             progress_frame,
-            active_color=COLORS["error"],
+            active_color=COLORS["info"],
             segment_width=10,
             spacing=3,
             height=16
@@ -225,7 +225,7 @@ class ProcessingView(ctk.CTkFrame):
         else:
             self.status_label.configure(text="🔄 Translating...", text_color=COLORS["info"])
             self.pause_btn.configure(text="Pause")
-            self.progress_bar.configure(progress_color=COLORS["error"])  # Red for active
+            self.progress_bar.configure(progress_color=COLORS["info"])
             # self.card.configure(border_color=COLORS["info"])
     
     def set_completed(self):

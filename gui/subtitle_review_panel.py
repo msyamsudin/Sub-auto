@@ -131,7 +131,7 @@ class SubtitleRow(ctk.CTkFrame):
         
         # 4. Speaker/Actor (Shortened)
         actor = self.entry.actor or "-"
-        l4 = ctk.CTkLabel(self, text=actor[:10], width=80, font=font_ui, text_color=COLORS["accent"])
+        l4 = ctk.CTkLabel(self, text=actor[:10], width=80, font=font_ui, text_color=COLORS["text_secondary"])
         l4.grid(row=0, column=3, sticky="w", padx=4)
         
         # 5. Text Preview (Strip tags)
@@ -194,12 +194,30 @@ class SubtitleDetailPanel(ctk.CTkFrame):
         self.meta_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.meta_frame.grid(row=1, column=0, sticky="ew", padx=SPACING["md"], pady=(0, SPACING["md"]))
         
-        self.actor_entry = ctk.CTkEntry(self.meta_frame, placeholder_text="Actor", width=120)
+        self.actor_entry = ctk.CTkEntry(
+            self.meta_frame,
+            placeholder_text="Actor",
+            width=120,
+            fg_color=COLORS["bg_light"],
+            border_color=COLORS["border_light"],
+            text_color=COLORS["text_primary"],
+            placeholder_text_color=COLORS["text_muted"]
+        )
         self.actor_entry.pack(side="left", padx=(0, 10))
         self.actor_entry.bind("<FocusOut>", self._on_meta_change)
         
         self.style_var = ctk.StringVar(value="Default")
-        self.style_menu = ctk.CTkOptionMenu(self.meta_frame, variable=self.style_var, values=["Default"])
+        self.style_menu = ctk.CTkOptionMenu(
+            self.meta_frame,
+            variable=self.style_var,
+            values=["Default"],
+            fg_color=COLORS["bg_light"],
+            button_color=COLORS["bg_medium"],
+            button_hover_color=COLORS["border_light"],
+            dropdown_fg_color=COLORS["bg_medium"],
+            dropdown_hover_color=COLORS["bg_light"],
+            text_color=COLORS["text_primary"]
+        )
         self.style_menu.pack(side="left")
         
         # 3. Toolbar (Formatting)
@@ -207,12 +225,41 @@ class SubtitleDetailPanel(ctk.CTkFrame):
         self.toolbar.grid(row=2, column=0, sticky="ew", padx=SPACING["md"])
         
         # Bold
-        ctk.CTkButton(self.toolbar, text="B", width=30, fg_color="transparent", border_width=1, command=lambda: self._insert_tag("{\\b1}", "{\\b0}")).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.toolbar,
+            text="B",
+            width=30,
+            fg_color=COLORS["bg_medium"],
+            hover_color=COLORS["bg_light"],
+            text_color=COLORS["text_primary"],
+            border_width=1,
+            border_color=COLORS["border_light"],
+            command=lambda: self._insert_tag("{\\b1}", "{\\b0}")
+        ).pack(side="left", padx=2)
         # Italic
-        ctk.CTkButton(self.toolbar, text="I", width=30, fg_color="transparent", border_width=1, command=lambda: self._insert_tag("{\\i1}", "{\\i0}")).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.toolbar,
+            text="I",
+            width=30,
+            fg_color=COLORS["bg_medium"],
+            hover_color=COLORS["bg_light"],
+            text_color=COLORS["text_primary"],
+            border_width=1,
+            border_color=COLORS["border_light"],
+            command=lambda: self._insert_tag("{\\i1}", "{\\i0}")
+        ).pack(side="left", padx=2)
         
         # 4. Text Editor
-        self.text_editor = ctk.CTkTextbox(self, font=(FONTS["family"], 14), wrap="word")
+        self.text_editor = ctk.CTkTextbox(
+            self,
+            font=(FONTS["family"], 14),
+            wrap="word",
+            fg_color=COLORS["bg_medium"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            scrollbar_button_color=COLORS["bg_light"],
+            scrollbar_button_hover_color=COLORS["border_light"]
+        )
         self.text_editor.grid(row=3, column=0, sticky="nsew", padx=SPACING["md"], pady=(0, SPACING["md"]))
         self.text_editor.bind("<KeyRelease>", self._on_text_change)
         
@@ -221,8 +268,15 @@ class SubtitleDetailPanel(ctk.CTkFrame):
         
     def _create_time_input(self, parent, label):
         f = ctk.CTkFrame(parent, fg_color="transparent")
-        ctk.CTkLabel(f, text=label, font=(FONTS["family"], 10)).pack(anchor="w")
-        e = ctk.CTkEntry(f, width=110, font=(FONTS["mono_family"], 12))
+        ctk.CTkLabel(f, text=label, font=(FONTS["family"], 10), text_color=COLORS["text_secondary"]).pack(anchor="w")
+        e = ctk.CTkEntry(
+            f,
+            width=110,
+            font=(FONTS["mono_family"], 12),
+            fg_color=COLORS["bg_light"],
+            border_color=COLORS["border_light"],
+            text_color=COLORS["text_primary"]
+        )
         e.bind("<FocusOut>", self._on_timing_change)
         e.bind("<Return>", self._on_timing_change)
         e.pack()
@@ -422,7 +476,18 @@ class SubtitleReviewPanel(ctk.CTkFrame):
         self.grid_rowconfigure(0, weight=1)
         
         # Tab View
-        self.tabview = ctk.CTkTabview(self, anchor="nw")
+        self.tabview = ctk.CTkTabview(
+            self,
+            anchor="nw",
+            fg_color=COLORS["bg_medium"],
+            segmented_button_fg_color=COLORS["bg_light"],
+            segmented_button_selected_color=COLORS["accent_bg"],
+            segmented_button_selected_hover_color=COLORS["border_light"],
+            segmented_button_unselected_color=COLORS["bg_medium"],
+            segmented_button_unselected_hover_color=COLORS["bg_light"],
+            text_color=COLORS["text_primary"],
+            border_color=COLORS["border"]
+        )
         self.tabview.grid(row=0, column=0, sticky="nsew", padx=SPACING["sm"])
         
         self.tab_structured = self.tabview.add("Structured")
@@ -444,7 +509,14 @@ class SubtitleReviewPanel(ctk.CTkFrame):
         self.list_frame.grid_rowconfigure(1, weight=1)
         
         # Search/Filter
-        self.search_entry = ctk.CTkEntry(self.list_frame, placeholder_text="Search...")
+        self.search_entry = ctk.CTkEntry(
+            self.list_frame,
+            placeholder_text="Search...",
+            fg_color=COLORS["bg_light"],
+            border_color=COLORS["border_light"],
+            text_color=COLORS["text_primary"],
+            placeholder_text_color=COLORS["text_muted"]
+        )
         self.search_entry.grid(row=0, column=0, sticky="ew", pady=(0, 5))
         self.search_entry.bind("<KeyRelease>", self._on_search)
         
@@ -460,15 +532,38 @@ class SubtitleReviewPanel(ctk.CTkFrame):
         self.footer = ctk.CTkFrame(t, height=40, fg_color="transparent")
         self.footer.grid(row=1, column=0, columnspan=2, sticky="ew", pady=10)
         
-        ctk.CTkButton(self.footer, text="Discard", command=self.on_discard, fg_color=COLORS["error"]).pack(side="left")
-        ctk.CTkButton(self.footer, text="Approve & Merge", command=self._handle_approve, fg_color=COLORS["success"]).pack(side="right")
+        ctk.CTkButton(
+            self.footer,
+            text="Discard",
+            command=self.on_discard,
+            fg_color=COLORS["error"],
+            hover_color=COLORS["error_bg"],
+            text_color=COLORS["text_primary"]
+        ).pack(side="left")
+        ctk.CTkButton(
+            self.footer,
+            text="Approve & Merge",
+            command=self._handle_approve,
+            fg_color=COLORS["success"],
+            hover_color=COLORS["success_dim"],
+            text_color="#0f1419"
+        ).pack(side="right")
         
     def _setup_raw_tab(self):
         t = self.tab_raw
         t.grid_columnconfigure(0, weight=1)
         t.grid_rowconfigure(0, weight=1)
         
-        self.raw_text = ctk.CTkTextbox(t, font=(FONTS["mono_family"], 12), wrap="none")
+        self.raw_text = ctk.CTkTextbox(
+            t,
+            font=(FONTS["mono_family"], 12),
+            wrap="none",
+            fg_color=COLORS["bg_dark"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            scrollbar_button_color=COLORS["bg_light"],
+            scrollbar_button_hover_color=COLORS["border_light"]
+        )
         self.raw_text.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         
     def _load_data(self):
