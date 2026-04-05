@@ -112,6 +112,30 @@ class PromptRepository:
         self._save_to_disk()
         
         self.logger.info(f"Saved prompt: {prompt.name}")
+
+    def replace(self, old_name: str, prompt: Prompt):
+        """
+        Replace a prompt, optionally renaming it, and persist in one write.
+
+        Args:
+            old_name: Existing prompt name.
+            prompt: Updated prompt object.
+        """
+        if old_name not in self._prompts:
+            raise KeyError(f"Prompt not found: {old_name}")
+
+        if old_name != prompt.name and prompt.name in self._prompts:
+            raise ValueError(f"Prompt already exists: {prompt.name}")
+
+        prompt.metadata.updated_at = datetime.now()
+
+        if old_name != prompt.name:
+            del self._prompts[old_name]
+
+        self._prompts[prompt.name] = prompt
+        self._save_to_disk()
+
+        self.logger.info(f"Replaced prompt: {old_name} -> {prompt.name}")
     
     def delete(self, name: str) -> bool:
         """

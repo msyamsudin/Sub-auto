@@ -9,6 +9,8 @@ import threading
 from .styles import COLORS, FONTS, SPACING, RADIUS, get_button_style, get_input_style, get_label_style
 from core.translator import Translator
 from core.subtitle_parser import SubtitleLine
+from core.prompt_schema import Prompt, PromptMetadata
+from datetime import datetime
 
 
 class PromptTestDialog(ctk.CTkToplevel):
@@ -47,7 +49,7 @@ class PromptTestDialog(ctk.CTkToplevel):
         
         ctk.CTkLabel(
             input_frame,
-            text="Sample Input (one subtitle line):",
+            text="Sample subtitle lines (one line per subtitle):",
             **get_label_style("body")
         ).grid(row=0, column=0, sticky="w", padx=SPACING["md"], pady=(SPACING["md"], SPACING["xs"]))
         
@@ -60,11 +62,28 @@ class PromptTestDialog(ctk.CTkToplevel):
             height=80
         )
         self.input_text.grid(row=1, column=0, sticky="nsew", padx=SPACING["md"], pady=(0, SPACING["md"]))
-        self.input_text.insert("1.0", "Hello, how are you today?")
+        self.input_text.insert("1.0", "Hello, how are you today?\nWe should get going.")
+
+        ctk.CTkLabel(
+            input_frame,
+            text="Context preview used for {context}:",
+            **get_label_style("body")
+        ).grid(row=2, column=0, sticky="w", padx=SPACING["md"], pady=(0, SPACING["xs"]))
+
+        self.context_text = ctk.CTkTextbox(
+            input_frame,
+            fg_color=COLORS["bg_dark"],
+            border_width=1,
+            border_color=COLORS["border"],
+            font=(FONTS["family"], FONTS["body_size"]),
+            height=70
+        )
+        self.context_text.grid(row=3, column=0, sticky="ew", padx=SPACING["md"], pady=(0, SPACING["md"]))
+        self.context_text.insert("1.0", "[PREV] We have to move now.\n[PREV] They're almost here.")
         
         # Language selection
         lang_frame = ctk.CTkFrame(input_frame, fg_color="transparent")
-        lang_frame.grid(row=2, column=0, sticky="ew", padx=SPACING["md"], pady=(0, SPACING["md"]))
+        lang_frame.grid(row=4, column=0, sticky="ew", padx=SPACING["md"], pady=(0, SPACING["md"]))
         
         ctk.CTkLabel(lang_frame, text="From:", **get_label_style("body")).pack(side="left", padx=(0, SPACING["sm"]))
         
@@ -100,6 +119,23 @@ class PromptTestDialog(ctk.CTkToplevel):
             state="disabled"
         )
         self.output_text.grid(row=1, column=0, sticky="nsew", padx=SPACING["md"], pady=(0, SPACING["md"]))
+
+        ctk.CTkLabel(
+            output_frame,
+            text="Rendered prompt preview:",
+            **get_label_style("body")
+        ).grid(row=2, column=0, sticky="w", padx=SPACING["md"], pady=(0, SPACING["xs"]))
+
+        self.preview_text = ctk.CTkTextbox(
+            output_frame,
+            fg_color=COLORS["bg_dark"],
+            border_width=1,
+            border_color=COLORS["border"],
+            font=(FONTS["mono_family"], FONTS["small_size"]),
+            height=140,
+            state="disabled"
+        )
+        self.preview_text.grid(row=3, column=0, sticky="nsew", padx=SPACING["md"], pady=(0, SPACING["md"]))
         
         # Status label
         self.status_label = ctk.CTkLabel(
@@ -134,6 +170,7 @@ class PromptTestDialog(ctk.CTkToplevel):
         """Run the test translation."""
         # Get input
         input_text = self.input_text.get("1.0", "end-1c").strip()
+        context_text = self.context_text.get("1.0", "end-1c").strip()
         source_lang = self.source_lang.get().strip()
         target_lang = self.target_lang.get().strip()
         
@@ -144,23 +181,23 @@ class PromptTestDialog(ctk.CTkToplevel):
         # Disable button
         self.test_btn.configure(state="disabled", text="Testing...")
         self.status_label.configure(text="⏳ Translating...", text_color=COLORS["text_secondary"])
+
+        preview = self._render_preview(input_text, source_lang, target_lang, context_text)
+        self._set_preview_text(preview)
         
         # Run in background
         thread = threading.Thread(
             target=self._do_test,
-            args=(input_text, source_lang, target_lang),
+            args=(input_text, source_lang, target_lang, context_text),
             daemon=True
         )
         thread.start()
     
-    def _do_test(self, input_text: str, source_lang: str, target_lang: str):
+    def _do_test(self, input_text: str, source_lang: str, target_lang: str, context_text: str):
         """Perform the test translation in background."""
         try:
             # Create a temporary translator with custom prompt
             from core.prompt_manager import PromptManager
-            from core.prompt_repository import PromptRepository
-            from core.prompt_schema import Prompt, PromptMetadata
-            from datetime import datetime
             
             # Create temporary prompt
             temp_prompt = Prompt(
@@ -200,24 +237,41 @@ class PromptTestDialog(ctk.CTkToplevel):
             # Create translator
             translator = Translator(prompt_manager=temp_manager)
             
-            # Create subtitle line
-            test_line = SubtitleLine(
-                index=1,
-                start_time="00:00:00,000",
-                end_time="00:00:05,000",
-                text=input_text,
-                style=""
-            )
+            # Create subtitle lines and context lines
+            test_lines = [
+                SubtitleLine(
+                    index=i,
+                    start_time="00:00:00,000",
+                    end_time="00:00:05,000",
+                    text=line,
+                    style=""
+                )
+                for i, line in enumerate([line.strip() for line in input_text.splitlines() if line.strip()], start=1)
+            ]
+
+            context_lines = [
+                SubtitleLine(
+                    index=i,
+                    start_time="00:00:00,000",
+                    end_time="00:00:05,000",
+                    text=line.replace("[PREV]", "").strip(),
+                    style=""
+                )
+                for i, line in enumerate([line.strip() for line in context_text.splitlines() if line.strip()], start=1)
+            ]
             
             # Translate
             result = translator.translate_batch(
-                lines=[test_line],
+                lines=test_lines,
                 source_lang=source_lang,
-                target_lang=target_lang
+                target_lang=target_lang,
+                context_lines=context_lines or None
             )
             
             if result.success and result.translated_lines:
-                output = result.translated_lines[0][1]
+                output = "\n".join(
+                    f"[{index}] {text}" for index, text in result.translated_lines
+                )
                 self.after(0, lambda: self._on_test_complete(output, None))
             else:
                 error = result.error_message or "Translation failed"
@@ -238,3 +292,36 @@ class PromptTestDialog(ctk.CTkToplevel):
             self.status_label.configure(text="✅ Test complete", text_color=COLORS["success"])
         else:
             self.status_label.configure(text=f"❌ Error: {error}", text_color=COLORS["error"])
+
+    def _render_preview(self, input_text: str, source_lang: str, target_lang: str, context_text: str) -> str:
+        """Render the final prompt with current sample values."""
+        lines = [line.strip() for line in input_text.splitlines() if line.strip()]
+        rendered_lines = "\n".join(f"[{i}] {line}" for i, line in enumerate(lines, start=1)) or "[1] Hello world"
+        rendered_context = context_text or "(No previous context)"
+
+        temp_prompt = Prompt(
+            name="preview",
+            version="1.0.0",
+            active=False,
+            locked=False,
+            content=self.prompt_content,
+            metadata=PromptMetadata(
+                description="Preview",
+                author="System",
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+        )
+        return temp_prompt.render({
+            "source_lang": source_lang or "English",
+            "target_lang": target_lang or "Indonesian",
+            "context": rendered_context,
+            "lines": rendered_lines
+        })
+
+    def _set_preview_text(self, text: str):
+        """Replace rendered preview content safely."""
+        self.preview_text.configure(state="normal")
+        self.preview_text.delete("1.0", "end")
+        self.preview_text.insert("1.0", text)
+        self.preview_text.configure(state="disabled")

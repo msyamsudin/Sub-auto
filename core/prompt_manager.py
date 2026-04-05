@@ -222,6 +222,41 @@ OUTPUT:
             error_msg = str(e)
             self.logger.error(f"Failed to save prompt: {error_msg}")
             return False, f"Save failed: {error_msg}"
+
+    def update_prompt(self, old_name: str, prompt: Prompt) -> Tuple[bool, str]:
+        """
+        Update an existing prompt safely, including rename operations.
+
+        Args:
+            old_name: Current prompt name.
+            prompt: Updated prompt data.
+
+        Returns:
+            Tuple of (success, message)
+        """
+        is_valid, errors = prompt.validate()
+        if not is_valid:
+            error_msg = "; ".join(errors)
+            self.logger.warning(f"Failed to update prompt '{old_name}': {error_msg}")
+            return False, error_msg
+
+        existing = self.repository.get(old_name)
+        if not existing:
+            return False, "Prompt not found"
+
+        if existing.locked:
+            return False, "Cannot modify locked prompt"
+
+        if old_name != prompt.name and self.repository.exists(prompt.name):
+            return False, "A prompt with this name already exists"
+
+        try:
+            self.repository.replace(old_name, prompt)
+            return True, "Prompt updated successfully"
+        except Exception as e:
+            error_msg = str(e)
+            self.logger.error(f"Failed to update prompt '{old_name}': {error_msg}")
+            return False, f"Update failed: {error_msg}"
     
     def delete_prompt(self, name: str) -> Tuple[bool, str]:
         """

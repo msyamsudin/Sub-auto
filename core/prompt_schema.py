@@ -3,9 +3,10 @@ Prompt Schema for Sub-auto
 Defines the data model for translation prompts.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Tuple, Optional
+from string import Formatter
+from typing import Dict, List, Tuple
 
 
 @dataclass
@@ -48,7 +49,42 @@ class Prompt:
     
     # Validation constants
     REQUIRED_PLACEHOLDERS = ["{source_lang}", "{target_lang}", "{lines}", "{context}"]
+    ALLOWED_PLACEHOLDERS = {"source_lang", "target_lang", "lines", "context"}
     MAX_LENGTH = 10000  # Maximum prompt length in characters
+
+    def get_placeholder_names(self) -> Tuple[List[str], List[str]]:
+        """Return placeholder names and formatter parsing errors."""
+        formatter = Formatter()
+        names: List[str] = []
+        errors: List[str] = []
+
+        try:
+            for _, field_name, _, _ in formatter.parse(self.content):
+                if field_name is None:
+                    continue
+
+                normalized = field_name.strip()
+                if not normalized:
+                    errors.append("Empty placeholder detected. Use escaped braces '{{' or '}}' for literal braces.")
+                    continue
+
+                if normalized != field_name:
+                    errors.append(f"Invalid placeholder syntax: {{{field_name}}}")
+                    continue
+
+                if any(token in normalized for token in (".", "[", "]", "!", ":")):
+                    errors.append(f"Unsupported placeholder syntax: {{{normalized}}}")
+                    continue
+
+                names.append(normalized)
+        except ValueError as exc:
+            errors.append(f"Invalid format string: {exc}")
+
+        return names, errors
+
+    def render(self, values: Dict[str, str]) -> str:
+        """Render the prompt with placeholder values."""
+        return self.content.format(**values)
     
     def validate(self) -> Tuple[bool, List[str]]:
         """
@@ -67,27 +103,38 @@ class Prompt:
         if len(self.content) > self.MAX_LENGTH:
             errors.append(f"Prompt exceeds maximum length of {self.MAX_LENGTH} characters")
         
+        placeholders, placeholder_errors = self.get_placeholder_names()
+        errors.extend(placeholder_errors)
+
         # Check for required placeholders
-        for placeholder in self.REQUIRED_PLACEHOLDERS:
-            if placeholder not in self.content:
-                errors.append(f"Missing required placeholder: {placeholder}")
-        
-        # Check for basic output instruction
-        if "OUTPUT" not in self.content.upper():
-            errors.append("Prompt should contain output format instructions")
-        
-        # Check for forbidden patterns (potential injection attempts)
-        forbidden_patterns = [
-            "```python",  # Code execution attempts
-            "import os",
-            "import sys",
-            "exec(",
-            "eval(",
-        ]
-        
-        for pattern in forbidden_patterns:
-            if pattern in self.content:
-                errors.append(f"Forbidden pattern detected: {pattern}")
+        placeholder_set = set(placeholders)
+        for placeholder in self.ALLOWED_PLACEHOLDERS:
+            if placeholder not in placeholder_set:
+                errors.append(f"Missing required placeholder: {{{placeholder}}}")
+
+        # Check for unsupported placeholders
+        for placeholder in placeholder_set:
+            if placeholder not in self.ALLOWED_PLACEHOLDERS:
+                errors.append(f"Unknown placeholder: {{{placeholder}}}")
+
+        # Check for output structure guidance
+        normalized = self.content.upper()
+        if "[NUMBER]" not in normalized and "OUTPUT" not in normalized and "RESPOND WITH" not in normalized and "RETURN FORMAT" not in normalized:
+            errors.append("Prompt should describe the expected subtitle output format")
+
+        # Validate renderability with sample data
+        if not placeholder_errors:
+            try:
+                self.render({
+                    "source_lang": "English",
+                    "target_lang": "Indonesian",
+                    "context": "(No previous context)",
+                    "lines": "[1] Hello world"
+                })
+            except KeyError as exc:
+                errors.append(f"Unknown placeholder during render: {{{exc.args[0]}}}")
+            except ValueError as exc:
+                errors.append(f"Invalid format string: {exc}")
         
         return len(errors) == 0, errors
     
