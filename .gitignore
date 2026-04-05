@@ -33,3 +33,6 @@ manage_version.bat
 
 # History
 history.json
+
+# Refactoring
+refactoring_plan.md
