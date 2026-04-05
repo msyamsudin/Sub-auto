@@ -19,39 +19,59 @@ class ConfigurationView(ctk.CTkFrame):
         master, 
         on_model_change: Callable[[str], None],
         on_validate_api: Callable[[], None],
+        on_start: Callable[[], None] = None,
+        on_reset: Callable[[], None] = None,
         **kwargs
     ):
         super().__init__(master, fg_color="transparent", **kwargs)
         
-        self.grid_columnconfigure(0, weight=1)
-
-        self.header_card = ctk.CTkFrame(
-            self,
-            fg_color=COLORS["bg_medium"],
-            corner_radius=RADIUS["lg"],
-            border_width=1,
-            border_color=COLORS["border"]
+        # Action Buttons Section (Fixed at bottom)
+        self.action_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.action_frame.pack(side="bottom", fill="x", pady=(SPACING["md"], 0))
+        
+        self.reset_btn = ctk.CTkButton(
+            self.action_frame,
+            text="Reset",
+            width=80,
+            command=on_reset,
+            **get_button_style("secondary")
         )
-        self.header_card.pack(fill="x", pady=(0, SPACING["md"]))
+        self.reset_btn.pack(side="left")
+        
+        self.start_btn = ctk.CTkButton(
+            self.action_frame,
+            text="Start Translation",
+            width=200,
+            font=(FONTS["family"], FONTS["body_size"], "bold"),
+            command=on_start,
+            **get_button_style("info")
+        )
+        self.start_btn.pack(side="right")
+
+        # Scrollable Content Section
+        self.scroll_container = ctk.CTkScrollableFrame(
+            self, 
+            fg_color="transparent",
+            label_text="",
+            corner_radius=0
+        )
+        self.scroll_container.pack(fill="both", expand=True)
+
+        # Header Area (Compact)
+        self.header_area = ctk.CTkFrame(self.scroll_container, fg_color="transparent")
+        self.header_area.pack(fill="x", pady=(0, SPACING["sm"]))
 
         self.header_label = ctk.CTkLabel(
-            self.header_card,
-            text="Configure translation",
-            font=(FONTS["family"], FONTS["heading_size"] + 4, "bold"),
+            self.header_area,
+            text="Translation Configuration",
+            font=(FONTS["family"], FONTS["heading_size"], "bold"),
             text_color=COLORS["text_primary"]
         )
-        self.header_label.pack(anchor="w", padx=SPACING["lg"], pady=(SPACING["lg"], SPACING["xs"]))
+        self.header_label.pack(anchor="w")
 
-        self.header_subtitle = ctk.CTkLabel(
-            self.header_card,
-            text="Pick the subtitle track, confirm languages, then connect your model.",
-            font=(FONTS["family"], FONTS["body_size"]),
-            text_color=COLORS["text_secondary"]
-        )
-        self.header_subtitle.pack(anchor="w", padx=SPACING["lg"], pady=(0, SPACING["lg"]))
         
         # === subtitle tracks section ===
-        self.tracks_section = CollapsibleFrame(self, title="Subtitle Tracks")
+        self.tracks_section = CollapsibleFrame(self.scroll_container, title="Subtitle Tracks")
         self.tracks_section.pack(fill="x", pady=(0, SPACING["md"]))
 
         self.tracks_hint = ctk.CTkLabel(
@@ -78,7 +98,7 @@ class ConfigurationView(ctk.CTkFrame):
         self.track_items: List[TrackListItem] = []
         
         # === Translation Options Section ===
-        self.options_section = CollapsibleFrame(self, title="Translation Settings")
+        self.options_section = CollapsibleFrame(self.scroll_container, title="Translation Settings")
         self.options_section.pack(fill="x", pady=(0, SPACING["md"]))
 
         self.options_hint = ctk.CTkLabel(
@@ -175,6 +195,8 @@ class ConfigurationView(ctk.CTkFrame):
             **get_button_style("secondary")
         )
         self.validate_btn.grid(row=0, column=3, padx=SPACING["md"], pady=SPACING["md"])
+        
+
 
     def update_tracks(self, tracks: List[Any], selected_id: Optional[int], on_track_select: Callable[[int, bool], None]):
         """Update the list of subtitle tracks."""

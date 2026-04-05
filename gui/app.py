@@ -182,7 +182,7 @@ class SubAutoApp(ctk.CTk):
         self.content_area = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.content_area.grid(row=1, column=0, sticky="nsew", padx=SPACING["lg"], pady=SPACING["md"])
         self.content_area.grid_columnconfigure(0, weight=1)
-        self.content_area.grid_rowconfigure(1, weight=1)
+        self.content_area.grid_rowconfigure(0, weight=1)
 
         # Processing View
         self.processing_view = ProcessingView(self.content_area, logger_instance=self.logger, on_pause=self._pause_translation, on_cancel=self._cancel_translation)
@@ -219,7 +219,13 @@ class SubAutoApp(ctk.CTk):
         return view
 
     def _create_step2_fragment(self):
-        view = ConfigurationView(self.content_area, on_model_change=self._on_model_change, on_validate_api=self._validate_api)
+        view = ConfigurationView(
+            self.content_area, 
+            on_model_change=self._on_model_change, 
+            on_validate_api=self._validate_api,
+            on_start=self._start_translation,
+            on_reset=self._reset_app
+        )
         self.tracks_frame = view.tracks_frame
         self.no_tracks_label = view.no_tracks_label
         self.source_lang_row = view.source_lang_row
@@ -229,6 +235,10 @@ class SubAutoApp(ctk.CTk):
         self.cost_estimate_label = view.cost_estimate_label
         self.validate_btn = view.validate_btn
         self.track_items = view.track_items
+        
+        # Link action buttons directly to app instance
+        self.start_btn = view.start_btn
+        self.reset_btn = view.reset_btn
         return view
 
     def _create_step4_fragment(self):
@@ -241,22 +251,21 @@ class SubAutoApp(ctk.CTk):
         """Create footer with action buttons (FULL WIDTH)."""
         self.footer = FooterView(
             self,
-            on_start=self._start_translation,
-            on_reset=self._reset_app,
             on_resume=self._resume_translation,
-            on_show_summary=self._show_last_summary
+            on_show_summary=self._show_last_summary,
+            on_pause=self._pause_translation,
+            on_cancel=self._cancel_translation
         )
         self.footer.grid(row=2, column=0, sticky="ew", padx=SPACING["md"], pady=(0, SPACING["md"]))
         
         # Link references for backward compatibility
-        self.start_btn = self.footer.start_btn
         self.resume_btn = self.footer.resume_btn
         self.status_label = self.footer.status_label
-        self.reset_btn = self.footer.reset_btn
         self.show_summary_btn = self.footer.summary_btn
         
         # Initial state
-        self.start_btn.configure(state="disabled")
+        if hasattr(self, 'start_btn'):
+            self.start_btn.configure(state="disabled")
     
     def _update_step_states(self):
         """Update UI states based on current progress."""
@@ -504,6 +513,9 @@ class SubAutoApp(ctk.CTk):
         self._update_step_states() # Update completion status
         self.step_controller.show_step(3)
         
+        # Show processing buttons in footer
+        self.footer.set_processing_mode(True, is_paused=self.app_state.is_paused)
+        
         # Set file info in processing view
         if self.app_state.current_file:
             filename = Path(self.app_state.current_file).name
@@ -519,6 +531,9 @@ class SubAutoApp(ctk.CTk):
         """Return to normal mode or advance to review."""
         self.app_state.is_processing = False
         self.title_bar.title_label.configure(text=self.APP_TITLE)
+        
+        # Hide footer buttons
+        self.footer.set_processing_mode(False)
         
         # If cancelled, go back to configuration (Step 2)
         if self.app_state.should_cancel:
@@ -599,6 +614,7 @@ class SubAutoApp(ctk.CTk):
             # Pause
             if self.translation_session.pause():
                 self.processing_view.set_paused(True)
+                self.footer.set_processing_mode(True, is_paused=True)
                 self.status_label.configure(text="Paused - progress saved")
     
     def _resume_translation(self):
@@ -619,6 +635,7 @@ class SubAutoApp(ctk.CTk):
         self.app_state.is_processing = True
         
         self.processing_view.set_paused(False)
+        self.footer.set_processing_mode(True, is_paused=False)
         self.resume_btn.pack_forget()
         
         self._enter_processing_mode()
@@ -758,7 +775,8 @@ class SubAutoApp(ctk.CTk):
             self.app_state.selected_model = state.model_name
             
             # Show resume button
-            self.start_btn.pack_forget()
+            if hasattr(self, 'start_btn'):
+                self.start_btn.pack_forget()
             self.resume_btn.pack(side="left")
             self.status_label.configure(text="Ready to resume")
         else:
@@ -796,7 +814,8 @@ class SubAutoApp(ctk.CTk):
         self.status_label.configure(text="")
         
         self.resume_btn.pack_forget()
-        self.start_btn.pack(side="left")
+        if hasattr(self, 'start_btn'):
+            self.start_btn.pack(side="right")
     
     def _show_last_summary(self):
         """Re-open the last summary window."""

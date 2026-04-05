@@ -16,13 +16,15 @@ class FooterView(ctk.CTkFrame):
     def __init__(
         self, 
         master, 
-        on_start: Callable[[], None],
-        on_reset: Callable[[], None],
         on_resume: Callable[[], None],
         on_show_summary: Callable[[], None],
+        on_pause: Optional[Callable[[], None]] = None,
+        on_cancel: Optional[Callable[[], None]] = None,
         **kwargs
     ):
         super().__init__(master, fg_color="transparent", height=60, **kwargs)
+        self.on_pause = on_pause
+        self.on_cancel = on_cancel
         self.grid_columnconfigure(0, weight=1)
         
         # Separator
@@ -46,14 +48,25 @@ class FooterView(ctk.CTkFrame):
         self.buttons_frame = ctk.CTkFrame(self.content, fg_color="transparent")
         self.buttons_frame.grid(row=0, column=1, sticky="e")
         
-        self.reset_btn = ctk.CTkButton(
+        # Processing controls (initially hidden)
+        self.pause_btn = ctk.CTkButton(
             self.buttons_frame,
-            text="Reset",
-            width=80,
-            command=on_reset,
+            text="Pause",
+            width=100,
+            command=self.on_pause,
             **get_button_style("secondary")
         )
-        self.reset_btn.pack(side="left", padx=(0, SPACING["lg"]))
+        # self.pause_btn.pack(side="left", padx=(0, SPACING["md"])) # Will be packed in set_processing_mode
+        
+        self.cancel_btn = ctk.CTkButton(
+            self.buttons_frame,
+            text="Cancel",
+            width=100,
+            command=self.on_cancel,
+            **get_button_style("danger")
+        )
+        # self.cancel_btn.pack(side="left", padx=(0, SPACING["md"]))
+
         
         self.summary_btn = ctk.CTkButton(
             self.buttons_frame,
@@ -64,16 +77,6 @@ class FooterView(ctk.CTkFrame):
         )
         self.summary_btn.pack(side="left", padx=(0, SPACING["lg"]))
         self.summary_btn.pack_forget()
-
-        self.start_btn = ctk.CTkButton(
-            self.buttons_frame,
-            text="Start Translation",
-            width=150,
-            font=(FONTS["family"], FONTS["subheading_size"], "bold"),
-            command=on_start,
-            **get_button_style("info")
-        )
-        self.start_btn.pack(side="left")
         
         self.resume_btn = ctk.CTkButton(
             self.buttons_frame,
@@ -90,25 +93,27 @@ class FooterView(ctk.CTkFrame):
         if color:
             self.status_label.configure(text_color=color)
 
-    def set_start_state(self, enabled: bool, text: str = "Start Translation"):
-        """Update start button state."""
-        self.start_btn.configure(
-            state="normal" if enabled else "disabled",
-            text=text
-        )
-
     def show_resume(self, show: bool):
         """Toggle resume button visibility."""
         if show:
             self.resume_btn.pack(side="left", padx=(0, SPACING["lg"]))
-            self.start_btn.pack_forget()
         else:
             self.resume_btn.pack_forget()
-            self.start_btn.pack(side="left")
 
     def show_summary(self, show: bool):
         """Toggle summary button visibility."""
         if show:
-            self.summary_btn.pack(side="left", padx=(0, SPACING["lg"]), before=self.start_btn)
+            self.summary_btn.pack(side="left", padx=(0, SPACING["lg"]))
         else:
             self.summary_btn.pack_forget()
+
+    def set_processing_mode(self, active: bool, is_paused: bool = False):
+        """Show/hide processing controls in footer."""
+        if active:
+            self.cancel_btn.pack(side="right")
+            self.pause_btn.pack(side="right", padx=(0, SPACING["md"]))
+            self.pause_btn.configure(text="Resume" if is_paused else "Pause")
+        else:
+            self.pause_btn.pack_forget()
+            self.cancel_btn.pack_forget()
+

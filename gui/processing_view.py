@@ -4,7 +4,7 @@ Compact view shown during translation processing.
 """
 
 import customtkinter as ctk
-from typing import Optional, Callable
+from typing import Optional, Callable, Any
 from pathlib import Path
 
 from .components import LogPanel, SegmentedProgressBar
@@ -46,12 +46,12 @@ class ProcessingView(ctk.CTkFrame):
             border_width=1,
             border_color=COLORS["border"]
         )
-        self.card.grid(row=0, column=0, sticky="ew", padx=SPACING["lg"], pady=SPACING["lg"])
+        self.card.grid(row=0, column=0, sticky="ew", padx=SPACING["lg"], pady=(SPACING["sm"], SPACING["sm"]))
         self.card.grid_columnconfigure(0, weight=1)
         
         # Header with file info
         header = ctk.CTkFrame(self.card, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=SPACING["lg"], pady=(SPACING["lg"], SPACING["md"]))
+        header.grid(row=0, column=0, sticky="ew", padx=SPACING["lg"], pady=(SPACING["md"], SPACING["xs"]))
         header.grid_columnconfigure(0, weight=1)
         
         self.status_label = ctk.CTkLabel(
@@ -64,7 +64,7 @@ class ProcessingView(ctk.CTkFrame):
         
         # File info
         file_frame = ctk.CTkFrame(self.card, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
-        file_frame.grid(row=1, column=0, sticky="ew", padx=SPACING["lg"], pady=SPACING["sm"])
+        file_frame.grid(row=1, column=0, sticky="ew", padx=SPACING["lg"], pady=SPACING["xs"])
         file_frame.grid_columnconfigure(0, weight=1)
         
         self.file_label = ctk.CTkLabel(
@@ -87,19 +87,18 @@ class ProcessingView(ctk.CTkFrame):
         
         # Progress section
         progress_frame = ctk.CTkFrame(self.card, fg_color="transparent")
-        progress_frame.grid(row=2, column=0, sticky="ew", padx=SPACING["lg"], pady=SPACING["md"])
+        progress_frame.grid(row=2, column=0, sticky="ew", padx=SPACING["lg"], pady=SPACING["sm"])
         progress_frame.grid_columnconfigure(0, weight=1)
         
-        # Progress bar
         # Progress bar
         self.progress_bar = SegmentedProgressBar(
             progress_frame,
             active_color=COLORS["info"],
             segment_width=10,
             spacing=3,
-            height=16
+            height=20
         )
-        self.progress_bar.grid(row=0, column=0, sticky="ew", pady=(0, SPACING["sm"]))
+        self.progress_bar.grid(row=0, column=0, sticky="ew", pady=(0, SPACING["xs"]))
         self.progress_bar.set(0)
         
         # Progress text
@@ -125,7 +124,7 @@ class ProcessingView(ctk.CTkFrame):
         
         # Token stats
         stats_frame = ctk.CTkFrame(self.card, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
-        stats_frame.grid(row=3, column=0, sticky="ew", padx=SPACING["lg"], pady=SPACING["sm"])
+        stats_frame.grid(row=3, column=0, sticky="ew", padx=SPACING["lg"], pady=(SPACING["xs"], SPACING["md"]))
         stats_frame.grid_columnconfigure((0, 1, 2), weight=1)
         
         # Create stats and store references
@@ -133,36 +132,14 @@ class ProcessingView(ctk.CTkFrame):
         self.completion_value_label = self._create_stat(stats_frame, 1, "Completion", "0")
         self.total_value_label = self._create_stat(stats_frame, 2, "Total", "0")
         
-        # Control buttons
-        buttons_frame = ctk.CTkFrame(self.card, fg_color="transparent")
-        buttons_frame.grid(row=4, column=0, sticky="e", padx=SPACING["lg"], pady=SPACING["lg"])
-        
-        self.pause_btn = ctk.CTkButton(
-            buttons_frame,
-            text="Pause",
-            width=100,
-            command=self._on_pause_click,
-            **get_button_style("secondary")
-        )
-        self.pause_btn.pack(side="left", padx=(0, SPACING["md"]))
-        
-        self.cancel_btn = ctk.CTkButton(
-            buttons_frame,
-            text="Cancel",
-            width=100,
-            command=self.on_cancel,
-            **get_button_style("danger")
-        )
-        self.cancel_btn.pack(side="left")
-        
         # Log Panel
         self.log_panel = LogPanel(self, self.logger, expanded=True)
-        self.log_panel.grid(row=1, column=0, sticky="nsew", padx=SPACING["lg"], pady=(0, SPACING["lg"]))
+        self.log_panel.grid(row=1, column=0, sticky="nsew", padx=SPACING["lg"], pady=(0, SPACING["md"]))
     
     def _create_stat(self, parent, col: int, label: str, value: str):
         """Create a stat display and return the value label."""
         frame = ctk.CTkFrame(parent, fg_color="transparent")
-        frame.grid(row=0, column=col, padx=SPACING["md"], pady=SPACING["md"])
+        frame.grid(row=0, column=col, padx=SPACING["md"], pady=SPACING["sm"])
         
         value_lbl = ctk.CTkLabel(
             frame,
@@ -183,7 +160,7 @@ class ProcessingView(ctk.CTkFrame):
         return value_lbl  # Return reference to value label
     
     def _on_pause_click(self):
-        """Handle pause button click."""
+        """Handle pause button click (deprecated as buttons moved to footer)."""
         if self.on_pause:
             self.on_pause()
     
@@ -219,29 +196,23 @@ class ProcessingView(ctk.CTkFrame):
         self.is_paused = paused
         if paused:
             self.status_label.configure(text="⏸️ Paused", text_color=COLORS["warning"])
-            self.pause_btn.configure(text="Resume")
             self.progress_bar.configure(progress_color=COLORS["warning"])
-            # self.card.configure(border_color=COLORS["warning"])
         else:
             self.status_label.configure(text="🔄 Translating...", text_color=COLORS["info"])
-            self.pause_btn.configure(text="Pause")
             self.progress_bar.configure(progress_color=COLORS["info"])
             # self.card.configure(border_color=COLORS["info"])
-    
+
     def set_completed(self):
         """Set completed state."""
         self.status_label.configure(text="✅ Complete!", text_color=COLORS["success"])
         self.progress_bar.configure(progress_color=COLORS["success"])
         # self.card.configure(border_color=COLORS["success"])
-        self.pause_btn.pack_forget()
-        self.cancel_btn.configure(text="Close", fg_color=COLORS["success"])
-    
+
     def set_error(self, message: str):
         """Set error state."""
         self.status_label.configure(text=f"❌ Error: {message}", text_color=COLORS["error"])
         self.progress_bar.configure(progress_color=COLORS["error"])
         # self.card.configure(border_color=COLORS["error"])
-        self.pause_btn.pack_forget()
 
     def update_progress_summary(
         self, 
@@ -249,7 +220,7 @@ class ProcessingView(ctk.CTkFrame):
         total: int, 
         status: Optional[str] = None, 
         status_color: Optional[str] = None,
-        tokens: Optional[any] = None
+        tokens: Optional[Any] = None
     ):
         """Unified method to update all progress aspects at once."""
         percent = (current / total * 100) if total > 0 else 0
