@@ -115,6 +115,14 @@ class CustomTitleBar(ctk.CTkFrame):
                 text_color=COLORS["text_muted"]
             )
             self.api_status.pack(side="right", padx=SPACING["md"], pady=(2, 0))
+
+            self.prompt_status = ctk.CTkLabel(
+                self.drag_area,
+                text="",
+                font=(FONTS["family"], FONTS["small_size"]),
+                text_color=COLORS["text_muted"]
+            )
+            self.prompt_status.pack(side="right", padx=SPACING["md"], pady=(2, 0))
         
         # Right side - Window controls
         controls_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -280,6 +288,14 @@ class CustomTitleBar(ctk.CTkFrame):
             self.api_status.configure(text=text, text_color=COLORS["success"])
         else:
             self.api_status.configure(text="⚠ API Not Configured", text_color=COLORS["warning"])
+            
+    def set_active_prompt(self, name: str = ""):
+        if not hasattr(self, 'prompt_status'):
+            return
+        if name:
+            self.prompt_status.configure(text=f"📝 {name}", text_color=COLORS["text_secondary"])
+        else:
+            self.prompt_status.configure(text="📝 No Active Prompt", text_color=COLORS["warning"])
             
     def get_center_frame(self):
         return self.drag_area

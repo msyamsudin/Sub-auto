@@ -4,7 +4,7 @@ Manages translation prompts with testing capability.
 """
 
 import customtkinter as ctk
-from typing import Optional
+from typing import Optional, Callable
 
 from .styles import COLORS, FONTS, SPACING, RADIUS, get_button_style, get_input_style, get_label_style
 from .prompt_test_dialog import PromptTestDialog
@@ -28,11 +28,13 @@ class PromptSettingsTab(ctk.CTkFrame):
         self,
         parent,
         prompt_manager: PromptManager,
+        on_active_prompt_change: Optional[Callable[[str], None]] = None,
         **kwargs
     ):
         super().__init__(parent, fg_color="transparent", **kwargs)
         
         self.prompt_manager = prompt_manager
+        self.on_active_prompt_change = on_active_prompt_change
         self.selected_prompt: Optional[Prompt] = None
         
         self._setup_ui()
@@ -55,7 +57,7 @@ class PromptSettingsTab(ctk.CTkFrame):
         """Setup the prompt list on the left side."""
         list_frame = ctk.CTkFrame(self, fg_color=COLORS["bg_medium"], corner_radius=RADIUS["md"])
         list_frame.grid(row=0, column=0, sticky="nsew", padx=(0, SPACING["md"]))
-        list_frame.grid_rowconfigure(1, weight=1)
+        list_frame.grid_rowconfigure(2, weight=1)
         list_frame.grid_columnconfigure(0, weight=1)
         
         # Header
@@ -65,14 +67,32 @@ class PromptSettingsTab(ctk.CTkFrame):
             font=(FONTS["family"], FONTS["subheading_size"], "bold"),
             text_color=COLORS["text_primary"]
         )
-        header.grid(row=0, column=0, sticky="w", padx=SPACING["md"], pady=SPACING["md"])
-        
+        header.grid(row=0, column=0, sticky="w", padx=SPACING["md"], pady=(SPACING["md"], SPACING["xs"]))
+
+        # Active prompt indicator banner
+        self.active_indicator_frame = ctk.CTkFrame(
+            list_frame,
+            fg_color=COLORS["success_bg"],
+            corner_radius=RADIUS["sm"]
+        )
+        self.active_indicator_frame.grid(row=1, column=0, sticky="ew", padx=SPACING["sm"], pady=(0, SPACING["xs"]))
+        self.active_indicator_frame.grid_columnconfigure(0, weight=1)
+
+        self.active_indicator_label = ctk.CTkLabel(
+            self.active_indicator_frame,
+            text="No active prompt",
+            font=(FONTS["family"], FONTS["small_size"]),
+            text_color=COLORS["success"],
+            anchor="w"
+        )
+        self.active_indicator_label.grid(row=0, column=0, sticky="ew", padx=SPACING["sm"], pady=SPACING["xs"])
+
         # Scrollable list
         self.prompt_scroll = ctk.CTkScrollableFrame(
             list_frame,
             fg_color="transparent"
         )
-        self.prompt_scroll.grid(row=1, column=0, sticky="nsew", padx=SPACING["sm"], pady=(0, SPACING["sm"]))
+        self.prompt_scroll.grid(row=2, column=0, sticky="nsew", padx=SPACING["sm"], pady=(0, SPACING["sm"]))
         self.prompt_scroll.grid_columnconfigure(0, weight=1)
         
         # Internal container for items to allow safe clearing
@@ -87,7 +107,7 @@ class PromptSettingsTab(ctk.CTkFrame):
             command=self._on_new_prompt,
             **get_button_style("primary")
         )
-        new_btn.grid(row=2, column=0, sticky="ew", padx=SPACING["md"], pady=SPACING["md"])
+        new_btn.grid(row=3, column=0, sticky="ew", padx=SPACING["md"], pady=SPACING["md"])
     
     def _setup_prompt_editor(self):
         """Setup the prompt editor on the right side."""
@@ -326,7 +346,10 @@ class PromptSettingsTab(ctk.CTkFrame):
         
         for i, (name, prompt) in enumerate(prompts.items()):
             self._create_prompt_item(prompt, row=i)
-            
+
+        # Update active indicator banner
+        self._update_active_indicator(prompts)
+
         # Reselect if exists
         if self.selected_prompt and self.selected_prompt.name in prompts:
             self._update_selection_visuals(self.selected_prompt.name)
@@ -373,14 +396,21 @@ class PromptSettingsTab(ctk.CTkFrame):
         meta_label.pack(anchor="w", pady=(2, 0))
         
         if prompt.active:
-            active_badge = ctk.CTkLabel(
+            active_pill = ctk.CTkFrame(
                 badge_frame,
-                text="●",
-                font=(FONTS["family"], FONTS["body_size"], "bold"),
+                fg_color=COLORS["success_bg"],
+                corner_radius=RADIUS["sm"]
+            )
+            active_pill.pack(side="left", padx=SPACING["xs"])
+            active_badge = ctk.CTkLabel(
+                active_pill,
+                text="ACTIVE",
+                font=(FONTS["family"], FONTS["small_size"] - 1, "bold"),
                 text_color=COLORS["success"]
             )
-            active_badge.pack(side="left", padx=SPACING["xs"])
+            active_badge.pack(padx=SPACING["xs"], pady=1)
         else:
+            active_pill = None
             active_badge = None
         
         if prompt.locked:
@@ -402,7 +432,7 @@ class PromptSettingsTab(ctk.CTkFrame):
         }
         
         self._bind_prompt_item_click(
-            [item_frame, row_container, text_frame, name_label, meta_label, badge_frame, active_badge, lock_label],
+            [item_frame, row_container, text_frame, name_label, meta_label, badge_frame, active_pill, active_badge, lock_label],
             prompt
         )
 
@@ -418,6 +448,28 @@ class PromptSettingsTab(ctk.CTkFrame):
         prompt_type = "Default" if prompt.locked else "Custom"
         updated_at = prompt.metadata.updated_at.strftime(self.SIDEBAR_TIME_FORMAT)
         return f"{prompt_type}  |  {updated_at}"
+
+    def _update_active_indicator(self, prompts: dict):
+        """Update the sidebar active-prompt indicator banner."""
+        active_prompt = next((p for p in prompts.values() if p.active), None)
+        if active_prompt:
+            name = active_prompt.name
+            display = name if len(name) <= 24 else name[:21] + "..."
+            self.active_indicator_label.configure(
+                text=f"✓ Active: {display}",
+                text_color=COLORS["success"]
+            )
+            self.active_indicator_frame.configure(fg_color=COLORS["success_bg"])
+            if self.on_active_prompt_change:
+                self.on_active_prompt_change(name)
+        else:
+            self.active_indicator_label.configure(
+                text="No active prompt",
+                text_color=COLORS["text_muted"]
+            )
+            self.active_indicator_frame.configure(fg_color=COLORS["accent_bg"])
+            if self.on_active_prompt_change:
+                self.on_active_prompt_change("")
 
     def _bind_prompt_item_click(self, widgets, prompt: Prompt):
         """Bind click behavior across the full prompt item."""
@@ -452,12 +504,26 @@ class PromptSettingsTab(ctk.CTkFrame):
         self.content_text.delete("1.0", "end")
         self.content_text.insert("1.0", prompt.content)
 
-        badges = []
-        if prompt.active:
-            badges.append("● ACTIVE")
-        if prompt.locked:
-            badges.append("🔒 LOCKED")
-        self.status_badge.configure(text=" ".join(badges))
+        if prompt.active and prompt.locked:
+            self.status_badge.configure(
+                text="● ACTIVE  🔒 LOCKED",
+                text_color=COLORS["success"]
+            )
+        elif prompt.active:
+            self.status_badge.configure(
+                text="● ACTIVE",
+                text_color=COLORS["success"]
+            )
+        elif prompt.locked:
+            self.status_badge.configure(
+                text="🔒 LOCKED",
+                text_color=COLORS["warning"]
+            )
+        else:
+            self.status_badge.configure(
+                text="",
+                text_color=COLORS["text_muted"]
+            )
 
         if prompt.locked:
             self.name_entry.configure(state="disabled")

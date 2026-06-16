@@ -26,6 +26,7 @@ class SettingsDialog(ctk.CTkFrame):
         config,  # ConfigManager instance
         on_save: Optional[Callable] = None,
         on_close: Optional[Callable] = None,
+        on_active_prompt_change: Optional[Callable[[str], None]] = None,
         **kwargs
     ):
         super().__init__(parent, fg_color=COLORS["bg_dark"], **kwargs)
@@ -33,6 +34,7 @@ class SettingsDialog(ctk.CTkFrame):
         self.config = config
         self.on_save = on_save
         self.on_close_callback = on_close
+        self.on_active_prompt_change = on_active_prompt_change
         
         self._setup_ui()
     
@@ -79,7 +81,8 @@ class SettingsDialog(ctk.CTkFrame):
         self.prompt_manager = PromptManager()
         self.prompt_tab = PromptSettingsTab(
             self.tabview.tab("Prompts"),
-            prompt_manager=self.prompt_manager
+            prompt_manager=self.prompt_manager,
+            on_active_prompt_change=self.on_active_prompt_change
         )
         self.prompt_tab.pack(fill="both", expand=True)
         

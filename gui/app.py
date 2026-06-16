@@ -27,6 +27,7 @@ from .components import (
     ContentProgressHeader
 )
 from .settings_dialog import SettingsDialog
+from core.prompt_manager import PromptManager
 from .toast import ToastManager
 from .processing_view import ProcessingView
 from .history_view import HistoryView
@@ -89,6 +90,7 @@ class SubAutoApp(ctk.CTk):
         # State
         self.app_state = AppState()
         self.config = get_config()
+        self.prompt_manager = PromptManager()
         self.settings_view: Optional[SettingsDialog] = None
         self.history_view: Optional[HistoryView] = None
         self.mkv_handler: Optional[MKVHandler] = None
@@ -164,6 +166,10 @@ class SubAutoApp(ctk.CTk):
         # Custom Title Bar
         self.title_bar = CustomTitleBar(self, title=self.APP_TITLE, version=self.APP_VERSION, on_settings=self._open_settings, on_history=self._open_history, show_settings=True, show_history=True)
         self.title_bar.grid(row=0, column=0, sticky="ew")
+        
+        # Set initial active prompt status on title bar
+        active_prompt = self.prompt_manager.get_active_prompt_name()
+        self.title_bar.set_active_prompt(active_prompt)
         
         # Main container
         self.main_container = ctk.CTkFrame(self, fg_color="transparent")
@@ -361,7 +367,16 @@ class SubAutoApp(ctk.CTk):
             self.cost_estimate_label.configure(text=display_text)
     def _open_settings(self):
         """Open settings view."""
-        self.view_manager.open_settings(self.config, self._on_settings_save, SettingsDialog)
+        self.view_manager.open_settings(
+            self.config,
+            self._on_settings_save,
+            SettingsDialog,
+            on_active_prompt_change=self._on_active_prompt_changed
+        )
+        
+    def _on_active_prompt_changed(self, prompt_name: str):
+        """Handle active prompt change notification."""
+        self.title_bar.set_active_prompt(prompt_name)
         
     def _on_overlay_opened(self, view_type: str):
         """Callback when an overlay is opened."""

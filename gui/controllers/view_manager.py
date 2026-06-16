@@ -21,7 +21,7 @@ class ViewManager:
         self.on_overlay_opened = on_open
         self.on_overlay_closed = on_close
 
-    def open_settings(self, config, on_save: Callable, SettingsDialogClass):
+    def open_settings(self, config, on_save: Callable, SettingsDialogClass, on_active_prompt_change: Optional[Callable[[str], None]] = None):
         """Open settings overlay."""
         if self.settings_view:
             return
@@ -30,7 +30,8 @@ class ViewManager:
             self.root,
             config,
             on_save=on_save,
-            on_close=self.close_settings
+            on_close=self.close_settings,
+            on_active_prompt_change=on_active_prompt_change
         )
         
         # Setup layout
