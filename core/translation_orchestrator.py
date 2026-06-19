@@ -54,7 +54,8 @@ class TranslationOrchestrator:
         source_lang: str,
         target_lang: str,
         model_name: str,
-        anime_title: Optional[str] = None
+        anime_title: Optional[str] = None,
+        external_subtitle_path: Optional[str] = None
     ):
         """Start the translation process in a background thread."""
         self.is_processing = True
@@ -63,7 +64,7 @@ class TranslationOrchestrator:
         
         thread = threading.Thread(
             target=self._run_translation_thread,
-            args=(file_path, track_id, source_lang, target_lang, model_name, anime_title),
+            args=(file_path, track_id, source_lang, target_lang, model_name, anime_title, external_subtitle_path),
             daemon=True
         )
         thread.start()
@@ -75,7 +76,8 @@ class TranslationOrchestrator:
         source_lang: str,
         target_lang: str,
         model_name: str,
-        anime_title: Optional[str]
+        anime_title: Optional[str],
+        external_subtitle_path: Optional[str]
     ):
         start_time = time.time()
         lines_count = 0
@@ -93,7 +95,11 @@ class TranslationOrchestrator:
                     resume_state = state
             
             # Extract subtitle
-            extracted_path = self.mkv_handler.extract_subtitle(file_path, track_id)
+            extracted_path = (
+                external_subtitle_path
+                if external_subtitle_path
+                else self.mkv_handler.extract_subtitle(file_path, track_id)
+            )
             
             # Parse subtitle
             parser = SubtitleParser()
@@ -125,7 +131,8 @@ class TranslationOrchestrator:
                     total_lines=total_lines,
                     source_lang=source_lang,
                     target_lang=target_lang,
-                    model_name=model_name
+                    model_name=model_name,
+                    external_subtitle_path=external_subtitle_path
                 )
             
             def state_callback(current, total, status, token_usage):
@@ -165,7 +172,7 @@ class TranslationOrchestrator:
                 "input_path": input_path,
                 "sanitized_model": sanitized_model,
                 "model_used": model_name,
-                "extracted_path": extracted_path,
+                "extracted_path": None if external_subtitle_path else extracted_path,
                 "lines_count": lines_count,
                 "start_time": start_time,
                 "final_tokens": final_tokens,

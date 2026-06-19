@@ -22,14 +22,14 @@ class TranslationSession:
         )
         return self.orchestrator
 
-    def start(self, file_path, track_id, source_lang, target_lang, model, anime_title):
+    def start(self, file_path, track_id, source_lang, target_lang, model, anime_title, external_subtitle_path=None):
         """Start a new translation."""
         if not self.orchestrator:
             raise RuntimeError("Orchestrator not initialized")
             
         self.state.is_processing = True
         self.orchestrator.start_translation(
-            file_path, track_id, source_lang, target_lang, model, anime_title
+            file_path, track_id, source_lang, target_lang, model, anime_title, external_subtitle_path
         )
 
     def pause(self) -> bool:

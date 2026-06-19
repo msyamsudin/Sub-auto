@@ -19,6 +19,7 @@ class ConfigurationView(ctk.CTkFrame):
         master, 
         on_model_change: Callable[[str], None],
         on_validate_api: Callable[[], None],
+        on_external_subtitle: Callable[[], None],
         on_start: Callable[[], None] = None,
         on_reset: Callable[[], None] = None,
         **kwargs
@@ -94,6 +95,21 @@ class ConfigurationView(ctk.CTkFrame):
             **get_label_style("muted")
         )
         self.no_tracks_label.grid(row=0, column=0, pady=SPACING["lg"])
+
+        self.external_subtitle_frame = ctk.CTkFrame(self.tracks_frame, fg_color="transparent")
+        self.external_subtitle_label = ctk.CTkLabel(
+            self.external_subtitle_frame,
+            text="Select an external SRT, ASS, or SSA subtitle file.",
+            **get_label_style("muted")
+        )
+        self.external_subtitle_label.pack(side="left", padx=(0, SPACING["md"]))
+        self.external_subtitle_btn = ctk.CTkButton(
+            self.external_subtitle_frame,
+            text="Choose Subtitle",
+            command=on_external_subtitle,
+            **get_button_style("secondary")
+        )
+        self.external_subtitle_btn.pack(side="right")
         
         self.track_items: List[TrackListItem] = []
         
@@ -225,6 +241,26 @@ class ConfigurationView(ctk.CTkFrame):
             if track.track_id == selected_id:
                 item.set_selected(True)
             self.track_items.append(item)
+
+    def show_external_subtitle_option(self, show: bool, selected_path: Optional[str] = None):
+        """Show the external subtitle fallback when no embedded text track exists."""
+        if not show:
+            self.external_subtitle_frame.grid_forget()
+            return
+
+        if selected_path:
+            self.external_subtitle_label.configure(
+                text=f"External subtitle: {selected_path}",
+                text_color=COLORS["success"]
+            )
+            self.external_subtitle_btn.configure(text="Change Subtitle")
+        else:
+            self.external_subtitle_label.configure(
+                text="Select an external SRT, ASS, or SSA subtitle file.",
+                text_color=COLORS["text_muted"]
+            )
+            self.external_subtitle_btn.configure(text="Choose Subtitle")
+        self.external_subtitle_frame.grid(row=1, column=0, sticky="ew", pady=(0, SPACING["md"]))
 
     def set_model_status(self, text: str, color: str = None):
         """Update model status text and color."""

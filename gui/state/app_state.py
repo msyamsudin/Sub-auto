@@ -9,6 +9,7 @@ class AppState:
     current_file: Optional[str] = None
     subtitle_tracks: List[SubtitleTrack] = field(default_factory=list)
     selected_track_id: Optional[int] = None
+    external_subtitle_path: Optional[str] = None
     api_validated: bool = False
     selected_model: Optional[str] = None
     is_processing: bool = False

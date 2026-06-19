@@ -27,14 +27,15 @@ class EstimationService:
         mkv_path: str,
         track_id: int,
         on_result: Callable[[int, int], None],
-        on_error: Callable[[Exception], None]
+        on_error: Callable[[Exception], None],
+        external_subtitle_path: Optional[str] = None
     ) -> bool:
         """
         Start token estimation in a background thread.
         Returns True if started, False if already cached or pending.
         Calls on_result(total_chars, line_count) when done.
         """
-        cache_key = f"{mkv_path}:{track_id}"
+        cache_key = external_subtitle_path or f"{mkv_path}:{track_id}"
         
         # Check cache
         if cache_key in self._cache:
@@ -51,6 +52,15 @@ class EstimationService:
         
         def _do_estimate():
             try:
+                if external_subtitle_path:
+                    parser = SubtitleParser()
+                    lines = parser.load(external_subtitle_path)
+                    total_chars = sum(len(line.text) for line in lines)
+                    line_count = len(lines)
+                    self._cache[cache_key] = (total_chars, line_count)
+                    on_result(total_chars, line_count)
+                    return
+
                 suffix = ".srt.tmp"
                 try:
                     tracks = self.mkv_handler.get_subtitle_tracks(mkv_path)
@@ -103,4 +113,3 @@ class EstimationService:
         estimated_prompt_tokens = (total_chars // 4) + (line_count * 50)  # Text + prompt overhead
         estimated_completion_tokens = total_chars // 4  # Similar output size
         return estimated_prompt_tokens + estimated_completion_tokens
-

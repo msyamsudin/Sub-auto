@@ -52,7 +52,11 @@ class StepController:
 
         # Step 2: Config
         if self.state.selected_track_id is not None:
-            track_info = f"Track {self.state.selected_track_id}"
+            if self.state.external_subtitle_path:
+                from pathlib import Path
+                track_info = f"External: {Path(self.state.external_subtitle_path).name}"
+            else:
+                track_info = f"Track {self.state.selected_track_id}"
             if self.state.selected_model:
                 # Get short name from manager if possible
                 info = api_manager.get_selected_model_info()

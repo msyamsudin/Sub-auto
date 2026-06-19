@@ -229,6 +229,7 @@ class SubAutoApp(ctk.CTk):
             self.content_area, 
             on_model_change=self._on_model_change, 
             on_validate_api=self._validate_api,
+            on_external_subtitle=self._select_external_subtitle,
             on_start=self._start_translation,
             on_reset=self._reset_app
         )
@@ -335,7 +336,8 @@ class SubAutoApp(ctk.CTk):
                 self.app_state.current_file,
                 self.app_state.selected_track_id,
                 on_result,
-                on_error
+                on_error,
+                external_subtitle_path=self.app_state.external_subtitle_path
             )
             
             if started and hasattr(self, 'cost_estimate_label'):
@@ -429,6 +431,7 @@ class SubAutoApp(ctk.CTk):
     def _on_file_selected(self, file_path: str):
         """Handle file selection."""
         self.app_state.current_file = file_path
+        self.app_state.external_subtitle_path = None
         self._load_subtitle_tracks()
         self._update_step_states()
         
@@ -455,7 +458,10 @@ class SubAutoApp(ctk.CTk):
             if not filtered_tracks:
                  view.no_tracks_label.configure(text="No supported subtitle tracks found", text_color=COLORS["warning"])
                  view.no_tracks_label.grid()
+                 view.show_external_subtitle_option(True, self.app_state.external_subtitle_path)
                  return
+
+            view.show_external_subtitle_option(False)
             
             # Auto-select first track
             if self.track_items:
@@ -470,6 +476,35 @@ class SubAutoApp(ctk.CTk):
             )
             view.no_tracks_label.grid()
             self.toast.error(f"Failed to load tracks: {str(e)}")
+
+    def _select_external_subtitle(self):
+        """Select and validate an external text subtitle as the translation source."""
+        initial_dir = Path(self.app_state.current_file).parent if self.app_state.current_file else None
+        subtitle_path = filedialog.askopenfilename(
+            title="Select External Subtitle",
+            initialdir=str(initial_dir) if initial_dir else None,
+            filetypes=[
+                ("Supported subtitles", "*.srt *.ass *.ssa"),
+                ("SubRip subtitle", "*.srt"),
+                ("Advanced SubStation Alpha", "*.ass *.ssa")
+            ]
+        )
+        if not subtitle_path:
+            return
+
+        try:
+            lines = SubtitleParser().load(subtitle_path)
+            if not lines:
+                raise ValueError("The subtitle file contains no subtitle entries")
+        except Exception as e:
+            self.toast.error(f"Invalid subtitle file: {e}")
+            return
+
+        self.app_state.external_subtitle_path = subtitle_path
+        self.app_state.selected_track_id = -1
+        self.step_frames[1].show_external_subtitle_option(True, Path(subtitle_path).name)
+        self.toast.success(f"External subtitle selected: {Path(subtitle_path).name}")
+        self._update_step_states()
     
     def _on_track_select(self, track_id: int, is_selected: bool):
         """Handle track selection."""
@@ -539,6 +574,8 @@ class SubAutoApp(ctk.CTk):
                 if track.track_id == self.app_state.selected_track_id:
                     track_info = f"Track {track.track_id} - {track.language.upper()}"
                     break
+            if self.app_state.external_subtitle_path:
+                track_info = f"External - {Path(self.app_state.external_subtitle_path).name}"
             
             self.processing_view.set_file_info(filename, track_info)
     
@@ -566,7 +603,7 @@ class SubAutoApp(ctk.CTk):
             return
         
         if not self.app_state.current_file or self.app_state.selected_track_id is None:
-            self.toast.warning("Please select a file and track")
+            self.toast.warning("Please select a video and subtitle")
             return
             
         # Extract title automatically
@@ -614,7 +651,8 @@ class SubAutoApp(ctk.CTk):
              source_lang,
              target_lang,
              model_used,
-             self.app_state.current_anime_title
+             self.app_state.current_anime_title,
+             self.app_state.external_subtitle_path
         )
     
     # Removed _on_translation_progress, _on_orchestrator_complete from here
@@ -676,7 +714,8 @@ class SubAutoApp(ctk.CTk):
             source_lang,
             target_lang,
             model_used,
-            anime_title
+            anime_title,
+            self.app_state.external_subtitle_path
         )
     
     def _cancel_translation(self):
@@ -779,10 +818,17 @@ class SubAutoApp(ctk.CTk):
             "Resume?"
         ):
             self.app_state.current_file = state.source_file
+            self.app_state.external_subtitle_path = state.external_subtitle_path
             self.file_drop.set_file(state.source_file)
             self._load_subtitle_tracks()
             
-            if state.track_id:
+            if state.external_subtitle_path and os.path.exists(state.external_subtitle_path):
+                self.app_state.selected_track_id = -1
+                self.step_frames[1].show_external_subtitle_option(
+                    True, Path(state.external_subtitle_path).name
+                )
+                self._update_step_states()
+            elif state.track_id is not None:
                 self.after(500, lambda: self._select_track_by_id(state.track_id))
             
             self.source_lang_row.set_value(state.source_lang)
@@ -815,6 +861,8 @@ class SubAutoApp(ctk.CTk):
             item.destroy()
         self.track_items.clear()
         self.app_state.selected_track_id = None
+        self.app_state.external_subtitle_path = None
+        self.step_frames[1].show_external_subtitle_option(False)
         self.no_tracks_label.grid()
         
         self.app_state.is_processing = False

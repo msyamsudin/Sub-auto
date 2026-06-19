@@ -38,6 +38,7 @@ class TranslationState:
     # Token tracking
     prompt_tokens_used: int = 0
     completion_tokens_used: int = 0
+    external_subtitle_path: Optional[str] = None
     
     @property
     def progress_percent(self) -> float:
@@ -66,7 +67,8 @@ class TranslationState:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "prompt_tokens_used": self.prompt_tokens_used,
-            "completion_tokens_used": self.completion_tokens_used
+            "completion_tokens_used": self.completion_tokens_used,
+            "external_subtitle_path": self.external_subtitle_path
         }
     
     @classmethod
@@ -85,7 +87,8 @@ class TranslationState:
             created_at=data.get("created_at", datetime.now().isoformat()),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
             prompt_tokens_used=data.get("prompt_tokens_used", 0),
-            completion_tokens_used=data.get("completion_tokens_used", 0)
+            completion_tokens_used=data.get("completion_tokens_used", 0),
+            external_subtitle_path=data.get("external_subtitle_path")
         )
 
 
@@ -145,7 +148,8 @@ class StateManager:
         total_lines: int,
         source_lang: str,
         target_lang: str,
-        model_name: str
+        model_name: str,
+        external_subtitle_path: Optional[str] = None
     ) -> TranslationState:
         """
         Create a new translation state.
@@ -173,7 +177,8 @@ class StateManager:
                 model_name=model_name,
                 total_lines=total_lines,
                 completed_translations=[],
-                current_batch_index=0
+                current_batch_index=0,
+                external_subtitle_path=external_subtitle_path
             )
             
             self.save()
