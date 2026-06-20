@@ -23,7 +23,7 @@ from .styles import (
 )
 from .components import (
     FileDropZone, TrackListItem, ProgressPanel, SettingsRow, StatusBadge, APIKeyPanel, SummaryWindow,
-    LogPanel, CollapsibleFrame, CustomTitleBar, SubtitleEditor, VerticalStepper, HorizontalStepper,
+    LogPanel, CollapsibleFrame, CustomTitleBar, VerticalStepper, HorizontalStepper,
     ContentProgressHeader
 )
 from .settings_dialog import SettingsDialog

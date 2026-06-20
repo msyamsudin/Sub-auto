@@ -26,7 +26,7 @@ class TranslationController:
         """Handle translation progress updates."""
         status_color = None
         if status:
-            if "Retrying" in status:
+            if "retry" in status.lower() or "issue" in status.lower():
                 status_color = COLORS["warning"]
             elif "Finalizing" in status:
                 status_color = COLORS["success"]

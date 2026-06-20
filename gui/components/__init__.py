@@ -13,7 +13,6 @@ from .file import FileDropZone
 from .progress import SegmentedProgressBar, ProgressPanel
 from .api import APIKeyPanel, ModelSelectorDialog
 from .window import CustomTitleBar, SummaryWindow
-from .subtitle_editor import SubtitleEditor
 from .log_panel import LogPanel
 
 # Import these from their original locations (they were already in separate files)
@@ -32,7 +31,6 @@ __all__ = [
     'SegmentedProgressBar', 'ProgressPanel',
     'APIKeyPanel', 'ModelSelectorDialog',
     'CustomTitleBar', 'SummaryWindow',
-    'SubtitleEditor',
     'LogPanel',
     'StepCard',
     'SubtitleReviewPanel'

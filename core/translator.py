@@ -262,6 +262,7 @@ class Translator:
                     success=True,
                     translated_lines=final_translated,
                     error_message=f"Partial: expected {len(lines)}, got {len(final_translated)}",
+                    tokens_used=batch_tokens,
                 )
                     
         except PolicyViolationError as e:
@@ -390,6 +391,78 @@ class Translator:
                 continue
         
         return results
+
+    def _translate_batch_with_recovery(
+        self,
+        lines: List[SubtitleLine],
+        source_lang: str,
+        target_lang: str,
+        context_lines: List[SubtitleLine],
+        anime_title: Optional[str],
+        on_recovery: Optional[Callable[[str], None]] = None,
+        max_recovery_rounds: int = 2,
+    ) -> Tuple[List[Tuple[int, str]], List[SubtitleLine], Dict[int, str], TokenUsage]:
+        """Retry missing lines with progressively smaller batches."""
+        resolved: Dict[int, str] = {}
+        pending = list(lines)
+        failure_reasons: Dict[int, str] = {}
+        recovery_tokens = TokenUsage()
+
+        for round_index in range(max_recovery_rounds + 1):
+            if not pending or self.should_stop:
+                break
+
+            if round_index == 0:
+                chunks = [pending]
+            else:
+                divisor = 2 ** round_index
+                chunk_size = max(1, (len(pending) + divisor - 1) // divisor)
+                chunks = [pending[i:i + chunk_size] for i in range(0, len(pending), chunk_size)]
+                message = (
+                    f"Automatic recovery {round_index}/{max_recovery_rounds}: "
+                    f"retrying {len(pending)} missing line(s) in {len(chunks)} smaller batch(es)..."
+                )
+                self.logger.warning(message)
+                if on_recovery:
+                    on_recovery(message)
+
+            next_pending: List[SubtitleLine] = []
+            for chunk in chunks:
+                if self.should_stop:
+                    next_pending.extend(chunk)
+                    continue
+
+                result = self.translate_batch(
+                    lines=chunk,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    context_lines=context_lines,
+                    anime_title=anime_title,
+                )
+                recovery_tokens.add(
+                    prompt=result.tokens_used.prompt_tokens,
+                    completion=result.tokens_used.completion_tokens,
+                )
+
+                returned = {index: text for index, text in result.translated_lines}
+                for line in chunk:
+                    if line.index in returned:
+                        resolved[line.index] = returned[line.index]
+                        failure_reasons.pop(line.index, None)
+                    else:
+                        next_pending.append(line)
+                        failure_reasons[line.index] = (
+                            result.error_message or "Model response did not include this line"
+                        )
+
+            pending = next_pending
+
+        translations = [
+            (line.index, resolved[line.index])
+            for line in lines
+            if line.index in resolved
+        ]
+        return translations, pending, failure_reasons, recovery_tokens
     
     def translate_all(
         self,
@@ -400,7 +473,7 @@ class Translator:
         progress_callback: Optional[Callable[[int, int, str, TokenUsage], None]] = None,
         state_manager: Any = None,
         anime_title: Optional[str] = None
-    ) -> Tuple[List[Tuple[int, str]], List[str], TokenUsage]:
+    ) -> Tuple[List[Tuple[int, str]], List[Dict[str, Any]], TokenUsage]:
         """Translate all subtitle lines with progress tracking (Sequential)."""
         import time as time_module
         
@@ -468,46 +541,51 @@ class Translator:
                     self.token_usage
                 )
             
-            result = self.translate_batch(
-                lines=batch,
+            def recovery_progress(message: str):
+                if progress_callback:
+                    progress_callback(
+                        len(completed_indices), total_lines, message, self.token_usage
+                    )
+
+            pending_batch = [line for line in batch if line.index not in completed_indices]
+            recovered, unresolved, failure_reasons, batch_tokens = self._translate_batch_with_recovery(
+                lines=pending_batch,
                 source_lang=source_lang,
                 target_lang=target_lang,
                 context_lines=context_lines,
-                anime_title=anime_title
+                anime_title=anime_title,
+                on_recovery=recovery_progress,
             )
-            
-            if result.success:
-                new_translations = []
-                for idx, text in result.translated_lines:
-                    if idx not in completed_indices:
-                        all_translations.append((idx, text))
-                        new_translations.append((idx, text))
-                        completed_indices.add(idx)
-                
-                # Update progress
-                if state_manager:
-                    state_manager.update_progress(
-                        new_translations=new_translations,
-                        batch_index=batch_idx,
-                        prompt_tokens=result.tokens_used.prompt_tokens,
-                        completion_tokens=result.tokens_used.completion_tokens
-                    )
-                
-                context_lines = batch[-3:] if len(batch) >= 3 else batch
-                
-                # Check for partiality in a "successful" batch
-                if len(result.translated_lines) < len(batch):
-                     self.logger.warning(f"⚠️ Batch {batch_idx+1} partial: {len(result.translated_lines)}/{len(batch)}")
-                     pass
 
-            else:
-                error_msg = f"Batch {batch_idx + 1} failed: {result.error_message}"
-                self.logger.error(error_msg)
-                errors.append(error_msg)
-                # Keep original lines for failed ones
-                for line in batch:
-                    if line.index not in completed_indices:
-                        all_translations.append((line.index, line.text))
+            new_translations = []
+            for idx, text in recovered:
+                if idx not in completed_indices:
+                    all_translations.append((idx, text))
+                    new_translations.append((idx, text))
+                    completed_indices.add(idx)
+
+            if state_manager:
+                state_manager.update_progress(
+                    new_translations=new_translations,
+                    batch_index=batch_idx,
+                    prompt_tokens=batch_tokens.prompt_tokens,
+                    completion_tokens=batch_tokens.completion_tokens,
+                )
+
+            context_lines = batch[-3:] if len(batch) >= 3 else batch
+
+            for line in unresolved:
+                reason = failure_reasons.get(line.index, "Automatic recovery exhausted")
+                self.logger.error(
+                    f"Line {line.index} failed after automatic recovery: {reason}"
+                )
+                errors.append({
+                    "entry_index": line.index,
+                    "severity": "error",
+                    "reason": f"Automatic recovery exhausted: {reason}"[:240],
+                })
+                if line.index not in completed_indices:
+                    all_translations.append((line.index, line.text))
             
             # Delay between batches to avoid rate limits
             time_module.sleep(1.5)
@@ -515,7 +593,12 @@ class Translator:
         all_translations.sort(key=lambda x: x[0])
         
         if progress_callback:
-            progress_callback(total_lines, total_lines, "Translation complete!", self.token_usage)
+            status = (
+                f"Translation complete with {len(errors)} issue(s)"
+                if errors
+                else "Translation complete!"
+            )
+            progress_callback(total_lines, total_lines, status, self.token_usage)
         
         job_elapsed = time_module.time() - job_start_time
         
@@ -525,7 +608,7 @@ class Translator:
         self.logger.info(f"⏱️ Total time: {job_elapsed:.1f}s ({job_elapsed/60:.1f} minutes)")
         self.logger.info(f"🔢 Tokens: {self.token_usage.prompt_tokens:,} prompt + {self.token_usage.completion_tokens:,} completion = {self.token_usage.total_tokens:,} total")
         if errors:
-            self.logger.warning(f"⚠️ Errors: {len(errors)} batches failed")
+            self.logger.warning(f"⚠️ Errors: {len(errors)} lines failed after automatic recovery")
         self.logger.info("=" * 50)
         
         return all_translations, errors, self.token_usage
