@@ -6,7 +6,7 @@ Handles MKV merging, history recording, and temporary file cleanup.
 import os
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 
 from .mkv_handler import MKVHandler
 from .history_manager import HistoryEntry, get_history_manager
@@ -23,7 +23,12 @@ class FinalizationService:
         self.state_manager = get_state_manager()
         self.logger = get_logger()
 
-    def finalize_merge(self, payload: Dict[str, Any], remove_old_subs: bool = True) -> Dict[str, Any]:
+    def finalize_merge(
+        self,
+        payload: Dict[str, Any],
+        remove_old_subs: bool = True,
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> Dict[str, Any]:
         """
         Finalize the merge process: MKV merge, cleanup, and history.
         
@@ -51,7 +56,8 @@ class FinalizationService:
                 output_path=str(output_mkv_path),
                 language="ind",
                 track_name=f"Indonesian ({model_used})",
-                remove_existing_subs=remove_old_subs
+                remove_existing_subs=remove_old_subs,
+                progress_callback=progress_callback,
             )
             
             # 2. Cleanup Temporary Files

@@ -72,3 +72,11 @@ class ReviewView(ctk.CTkFrame):
         )
             
         self.editor_view.pack(fill="both", expand=True)
+
+    def set_merge_progress(self, percent: int):
+        if self.editor_view:
+            self.editor_view.set_merge_progress(percent)
+
+    def reset_merge_progress(self):
+        if self.editor_view:
+            self.editor_view.end_merge()

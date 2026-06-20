@@ -6,8 +6,12 @@ Wrapper for MKVToolnix CLI tools (mkvmerge, mkvextract).
 import json
 import subprocess
 import os
+import queue
+import re
+import threading
+import time
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Callable
 from dataclasses import dataclass
 
 from .config_manager import get_config
@@ -258,7 +262,8 @@ class MKVHandler:
         language: str = "ind",
         track_name: str = "Indonesian",
         default_track: bool = True,
-        remove_existing_subs: bool = False
+        remove_existing_subs: bool = False,
+        progress_callback: Optional[Callable[[int], None]] = None,
     ) -> str:
         """
         Merge a subtitle file into an MKV file.
@@ -271,6 +276,7 @@ class MKVHandler:
             track_name: Name for the subtitle track
             default_track: Whether to set this as the default subtitle track
             remove_existing_subs: Whether to remove existing subtitle tracks
+            progress_callback: Receives realtime mkvmerge progress from 0 to 100
             
         Returns:
             Path to the output MKV file
@@ -289,7 +295,7 @@ class MKVHandler:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Build mkvmerge command
-        cmd = [str(self.mkvmerge_path), "-o", str(output_path)]
+        cmd = [str(self.mkvmerge_path), "--gui-mode", "-o", str(output_path)]
         
         # Remove existing subtitles if requested
         if remove_existing_subs:
@@ -309,35 +315,88 @@ class MKVHandler:
         
         cmd.append(str(subtitle_path))
         
-        # Run mkvmerge
+        # Run mkvmerge and stream its GUI-mode progress output.
         try:
             logger = get_logger()
             logger.info(f"Running mkvmerge: {subprocess.list2cmdline(cmd)}")
-            
-            result = subprocess.run(
+
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                timeout=300,  # 5 minutes timeout for large files
                 encoding='utf-8',
-                errors='replace'
+                errors='replace',
+                bufsize=1,
             )
+
+            output_lines = []
+            output_queue = queue.Queue()
+
+            def read_output():
+                if process.stdout:
+                    for line in process.stdout:
+                        output_queue.put(line)
+                output_queue.put(None)
+
+            threading.Thread(target=read_output, daemon=True).start()
+            deadline = time.monotonic() + 300
+            reader_finished = False
+            last_progress = -1
+
+            if progress_callback:
+                progress_callback(0)
+
+            while not reader_finished:
+                if time.monotonic() >= deadline:
+                    process.kill()
+                    process.wait()
+                    raise subprocess.TimeoutExpired(cmd, 300)
+
+                try:
+                    line = output_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+
+                if line is None:
+                    reader_finished = True
+                    continue
+
+                output_lines.append(line)
+                progress = self._parse_merge_progress(line)
+                if progress is not None and progress != last_progress:
+                    last_progress = progress
+                    if progress_callback:
+                        progress_callback(progress)
+
+            return_code = process.wait()
+            output = "".join(output_lines)
             
             # mkvmerge returns 0 for success, 1 for warnings, 2 for errors
-            if result.returncode == 2:
-                error_msg = result.stderr or result.stdout or "Unknown error"
-                raise RuntimeError(f"mkvmerge error (code {result.returncode}): {error_msg}")
+            if return_code == 2:
+                raise RuntimeError(f"mkvmerge error (code {return_code}): {output or 'Unknown error'}")
             
-            if result.returncode == 1:
-                logger.warning(f"mkvmerge finished with warnings: {result.stderr}")
+            if return_code == 1:
+                logger.warning(f"mkvmerge finished with warnings: {output}")
             
             if not output_path.exists():
                 raise RuntimeError("Merge completed but output file not found")
             
+            if progress_callback and last_progress < 100:
+                progress_callback(100)
+
             return str(output_path)
             
         except subprocess.TimeoutExpired:
             raise RuntimeError("mkvmerge timed out during merge")
+
+    @staticmethod
+    def _parse_merge_progress(output: str) -> Optional[int]:
+        """Extract a percentage from mkvmerge GUI or console output."""
+        match = re.search(r"(?:#GUI#progress\s+|Progress:\s*)(\d{1,3})%", output, re.IGNORECASE)
+        if not match:
+            return None
+        return max(0, min(100, int(match.group(1))))
     
     def replace_subtitle(
         self,
@@ -346,7 +405,8 @@ class MKVHandler:
         output_path: Optional[str] = None,
         language: str = "ind",
         track_name: str = "Indonesian (Translated)",
-        remove_existing_subs: bool = False
+        remove_existing_subs: bool = False,
+        progress_callback: Optional[Callable[[int], None]] = None,
     ) -> str:
         """
         Replace subtitles in an MKV file with a new subtitle file.
@@ -359,6 +419,7 @@ class MKVHandler:
             language: Language code for the new subtitle
             track_name: Name for the new subtitle track
             remove_existing_subs: If True, removes all existing subtitle tracks
+            progress_callback: Receives realtime mkvmerge progress from 0 to 100
             
         Returns:
             Path to the output MKV file
@@ -375,6 +436,7 @@ class MKVHandler:
             language=language,
             track_name=track_name,
             default_track=True,
-            remove_existing_subs=remove_existing_subs
+            remove_existing_subs=remove_existing_subs,
+            progress_callback=progress_callback,
         )
 

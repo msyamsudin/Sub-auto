@@ -189,6 +189,7 @@ class SubtitleReviewPanel(ctk.CTkFrame):
         self.current_entry: Optional[ReviewEntry] = None
         self.filter_value = "All"
         self._loading_entry = False
+        self._merge_in_progress = False
 
         self._setup_ui()
         self._update_summary()
@@ -267,6 +268,16 @@ class SubtitleReviewPanel(ctk.CTkFrame):
             **get_button_style("success"),
         )
         self.approve_button.grid(row=0, column=2)
+
+        self.merge_progress = ctk.CTkProgressBar(
+            footer,
+            height=8,
+            progress_color=COLORS["success"],
+            fg_color=COLORS["bg_dark"],
+        )
+        self.merge_progress.set(0)
+        self.merge_progress.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(SPACING["sm"], 0))
+        self.merge_progress.grid_remove()
 
     def _setup_list(self, parent):
         frame = ctk.CTkFrame(parent, fg_color=COLORS["bg_dark"], corner_radius=0)
@@ -600,6 +611,8 @@ class SubtitleReviewPanel(ctk.CTkFrame):
         self._refresh_list(select_entry=target)
 
     def _handle_discard(self):
+        if self._merge_in_progress:
+            return
         detail = (
             "All manual subtitle edits in this review will be lost."
             if self.document.dirty
@@ -614,6 +627,8 @@ class SubtitleReviewPanel(ctk.CTkFrame):
         self.on_discard()
 
     def _handle_approve(self):
+        if self._merge_in_progress:
+            return
         if self.current_entry:
             try:
                 self._commit_timing()
@@ -647,7 +662,34 @@ class SubtitleReviewPanel(ctk.CTkFrame):
             self._set_filter("Issues")
             return
 
+        self.begin_merge()
         try:
             self.on_approve(self.document.export())
         except Exception as error:
+            self.end_merge()
             messagebox.showerror("Export failed", str(error), parent=self.winfo_toplevel())
+
+    def begin_merge(self):
+        """Lock review actions and reveal determinate merge progress."""
+        self._merge_in_progress = True
+        self.discard_button.configure(state="disabled")
+        self.approve_button.configure(state="disabled", text="Merging... 0%")
+        self.merge_progress.set(0)
+        self.merge_progress.grid()
+        self.summary_label.configure(text="Merging subtitle into video... 0%")
+
+    def set_merge_progress(self, percent: int):
+        percent = max(0, min(100, int(percent)))
+        if not self._merge_in_progress:
+            self.begin_merge()
+        self.merge_progress.set(percent / 100)
+        self.approve_button.configure(text=f"Merging... {percent}%")
+        self.summary_label.configure(text=f"Merging subtitle into video... {percent}%")
+
+    def end_merge(self):
+        """Restore review controls after a failed merge."""
+        self._merge_in_progress = False
+        self.discard_button.configure(state="normal")
+        self.approve_button.configure(state="normal", text="Approve & Merge")
+        self.merge_progress.grid_remove()
+        self._update_summary()

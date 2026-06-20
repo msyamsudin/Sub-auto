@@ -773,22 +773,44 @@ class SubAutoApp(ctk.CTk):
     
     def _on_review_approved(self, content: str):
         """Handle review approval - save edited content and merge."""
-        try:
-            # Save edited content back to file
-            with open(self.app_state.merge_payload["translated_sub_path"], 'wt', encoding='utf-8') as f:
-                f.write(content)
-            
-            # Finalize merge via service
-            self.toast.info("Finalizing merge into video...")
-            summary = self.finalization_service.finalize_merge(
-                self.app_state.merge_payload, 
-                remove_old_subs=self.app_state.remove_old_subs
-            )
-            self._on_translation_complete(summary)
-            
-        except Exception as e:
-            self.toast.error(f"Merge failed: {str(e)}")
-            self.logger.error(f"Finalize merge error: {e}")
+        payload = self.app_state.merge_payload
+        if not payload:
+            self.step_frames[3].reset_merge_progress()
+            self.toast.error("Merge failed: review data is no longer available")
+            return
+
+        self.app_state.is_processing = True
+        self.toast.info("Finalizing merge into video...")
+
+        def update_progress(percent: int):
+            self.after(0, lambda value=percent: self.step_frames[3].set_merge_progress(value))
+
+        def run_merge():
+            try:
+                # Persist the reviewed subtitle before handing it to mkvmerge.
+                with open(payload["translated_sub_path"], 'wt', encoding='utf-8') as f:
+                    f.write(content)
+
+                summary = self.finalization_service.finalize_merge(
+                    payload,
+                    remove_old_subs=self.app_state.remove_old_subs,
+                    progress_callback=update_progress,
+                )
+                self.after(0, lambda: self._on_review_merge_complete(summary))
+            except Exception as error:
+                self.logger.error(f"Finalize merge error: {error}")
+                self.after(0, lambda message=str(error): self._on_review_merge_error(message))
+
+        threading.Thread(target=run_merge, daemon=True).start()
+
+    def _on_review_merge_complete(self, summary: dict):
+        self.app_state.is_processing = False
+        self._on_translation_complete(summary)
+
+    def _on_review_merge_error(self, error: str):
+        self.app_state.is_processing = False
+        self.step_frames[3].reset_merge_progress()
+        self.toast.error(f"Merge failed: {error}")
             
     def _on_review_discarded(self):
         """Handle review discard - clean up and reset."""
