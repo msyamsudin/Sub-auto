@@ -29,7 +29,15 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Validate packaging metadata
-        run: python -c "import tomllib; tomllib.load(open('pyproject.toml', 'rb')); print('pyproject.toml OK')"
+        run: |
+          python -c "
+          try:
+              import tomllib
+          except ModuleNotFoundError:
+              import tomli as tomllib
+          tomllib.load(open('pyproject.toml', 'rb'))
+          print('pyproject.toml OK')
+          "
 
       - name: Compile check
         run: python -m compileall -q core gui main.py scripts tests

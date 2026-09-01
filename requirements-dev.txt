@@ -1,3 +1,5 @@
 # Development dependencies (run: pip install -r requirements-dev.txt)
 -r requirements.txt
 pytest>=8.0
+# tomllib is stdlib from Python 3.11; use the official backport on older versions
+tomli>=2.0; python_version < "3.11"
