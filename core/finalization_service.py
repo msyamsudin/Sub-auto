@@ -135,7 +135,7 @@ class FinalizationService:
                 output_file=str(output_path),
                 track_id=payload.get("track_id", -1),
                 source_lang=payload.get("source_lang", ""),
-                target_lang="ind",
+                target_lang=payload.get("target_lang", "ind"),
                 model_name=payload.get("model_used", ""),
                 provider=payload.get("provider", ""),
                 prompt_name=payload.get("prompt_used", ""),

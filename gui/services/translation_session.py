@@ -36,7 +36,8 @@ class TranslationSession:
         """Pause the current translation. Returns True if paused."""
         if self.orchestrator:
             self.state.is_paused = True
-            self.state.should_cancel = True
+            # Note: pause must NOT set should_cancel -- that flag is reserved
+            # for an actual cancel, so pausing never aborts the session.
             self.orchestrator.pause()
             return True
         return False

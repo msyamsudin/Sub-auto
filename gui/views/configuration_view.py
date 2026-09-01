@@ -239,7 +239,7 @@ class ConfigurationView(ctk.CTkFrame):
             )
             item.grid(row=i, column=0, sticky="ew", pady=SPACING["xs"])
             if track.track_id == selected_id:
-                item.set_selected(True)
+                item.select()
             self.track_items.append(item)
 
     def show_external_subtitle_option(self, show: bool, selected_path: Optional[str] = None):

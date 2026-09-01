@@ -26,7 +26,6 @@ logs/
 *.ass
 temp/
 translation_state.json
-tests/
 
 # Management Scripts
 manage_version.bat

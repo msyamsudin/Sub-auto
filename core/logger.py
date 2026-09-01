@@ -6,7 +6,17 @@ Provides a singleton logger for centralized application logging.
 from typing import Optional, List, Callable
 from datetime import datetime
 import threading
+import sys
 from pathlib import Path
+
+# The console may run on a legacy code page (e.g. cp1252 on Windows) where the
+# emoji-heavy log messages cannot be encoded. Replace unencodable characters
+# instead of crashing the whole application with UnicodeEncodeError.
+try:
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+except Exception:
+    pass
 
 
 class Logger:

@@ -48,10 +48,17 @@ class TranslationController:
             self.after_func(0, lambda: self.on_show_review_callback(payload))
 
     def on_error(self, error: str):
-        """Handle translation errors."""
+        """Handle translation errors (called from the background thread).
+
+        This callback runs inside the orchestrator's worker thread, so every
+        UI update must be marshalled to the main thread via after_func --
+        Tkinter widgets are not safe to touch from other threads.
+        """
         self.state.is_processing = False
-        self.processing_view.set_error(error[:50])
-        self.toast.error(f"Translation failed: {error}")
+        if self.processing_view:
+            self.after_func(0, lambda: self.processing_view.set_error(error[:50]))
+        if self.toast:
+            self.after_func(0, lambda: self.toast.error(f"Translation failed: {error}"))
         if self.on_complete_callback:
             self.after_func(3000, self.on_complete_callback)
 

@@ -37,6 +37,22 @@ class ModelInfo:
         completion_cost = (completion_tokens / 1_000_000) * self.completion_price
         return prompt_cost + completion_cost
 
+
+@dataclass
+class GenerationResult:
+    """Result of a generation call, including real token usage when available.
+
+    ``prompt_tokens``/``completion_tokens`` are 0 when the provider response
+    does not include usage data; callers should fall back to estimates then.
+    """
+    text: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
 class PolicyViolationError(Exception):
     """Raised when the content violates the provider's policy."""
     pass
@@ -58,8 +74,8 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    def generate_content(self, model_name: str, prompt: str) -> str:
-        """Generate content from the model."""
+    def generate_content(self, model_name: str, prompt: str) -> GenerationResult:
+        """Generate content from the model, returning text plus token usage."""
         pass
 
 class OpenRouterProvider(LLMProvider):
@@ -153,7 +169,7 @@ class OpenRouterProvider(LLMProvider):
         # Sort by name
         return sorted(models, key=lambda x: x.name)
 
-    def generate_content(self, model_name: str, prompt: str) -> str:
+    def generate_content(self, model_name: str, prompt: str) -> GenerationResult:
         import time
         data = {
             "model": model_name,
@@ -168,11 +184,16 @@ class OpenRouterProvider(LLMProvider):
             self.logger.info(f"OpenRouter API response time: {elapsed:.2f}s (model: {model_name})")
             
             if "choices" in result and len(result["choices"]) > 0:
-                return result["choices"][0]["message"]["content"]
+                usage = result.get("usage") or {}
+                return GenerationResult(
+                    text=result["choices"][0]["message"]["content"],
+                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                    completion_tokens=int(usage.get("completion_tokens") or 0),
+                )
             result_error = result.get('error', {})
             if result_error:
                  raise RuntimeError(f"API Error: {result_error.get('message', 'Unknown error')}")
-            return ""
+            return GenerationResult(text="")
         except Exception as e:
             raise RuntimeError(f"OpenRouter generation failed: {str(e)}")
 
@@ -236,7 +257,7 @@ class OllamaProvider(LLMProvider):
             
         return sorted(models, key=lambda x: x.name)
 
-    def generate_content(self, model_name: str, prompt: str) -> str:
+    def generate_content(self, model_name: str, prompt: str) -> GenerationResult:
         url = f"{self.base_url}/api/generate"
         data = {
             "model": model_name,
@@ -252,9 +273,14 @@ class OllamaProvider(LLMProvider):
         
         try:
             opener = self._get_opener()
-            with opener.open(req) as response:
+            # Explicit timeout so a hung local Ollama cannot block translation forever
+            with opener.open(req, timeout=120) as response:
                 result = json.loads(response.read().decode())
-                return result.get("response", "")
+                return GenerationResult(
+                    text=result.get("response", ""),
+                    prompt_tokens=int(result.get("prompt_eval_count") or 0),
+                    completion_tokens=int(result.get("eval_count") or 0),
+                )
         except Exception as e:
             raise RuntimeError(f"OLLAMA generation failed: {str(e)}")
 
@@ -332,7 +358,7 @@ class GroqProvider(LLMProvider):
         
         return sorted(models, key=lambda x: x.name)
 
-    def generate_content(self, model_name: str, prompt: str) -> str:
+    def generate_content(self, model_name: str, prompt: str) -> GenerationResult:
         import time
         data = {
             "model": model_name,
@@ -347,11 +373,16 @@ class GroqProvider(LLMProvider):
             self.logger.info(f"Groq API response time: {elapsed:.2f}s (model: {model_name})")
             
             if "choices" in result and len(result["choices"]) > 0:
-                return result["choices"][0]["message"]["content"]
+                usage = result.get("usage") or {}
+                return GenerationResult(
+                    text=result["choices"][0]["message"]["content"],
+                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                    completion_tokens=int(usage.get("completion_tokens") or 0),
+                )
             
             result_error = result.get('error', {})
             if result_error:
                  raise RuntimeError(f"API Error: {result_error.get('message', 'Unknown error')}")
-            return ""
+            return GenerationResult(text="")
         except Exception as e:
             raise RuntimeError(f"Groq generation failed: {str(e)}")

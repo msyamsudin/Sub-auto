@@ -13,6 +13,7 @@ from .mkv_handler import MKVHandler
 from .subtitle_parser import SubtitleParser
 from .translator import Translator, get_api_manager, TokenUsage
 from .state_manager import get_state_manager
+from .exceptions import TranslationCancelled
 from .logger import get_logger
 
 logger = get_logger()
@@ -138,7 +139,7 @@ class TranslationOrchestrator:
             def state_callback(current, total, status, token_usage):
                 progress_proxy(current, total, status, token_usage)
                 if self.should_cancel:
-                    raise KeyboardInterrupt("Cancelled")
+                    raise TranslationCancelled("Cancelled")
             
             # Execute Translation
             translations, errors, final_tokens = translator.translate_all(
@@ -150,6 +151,10 @@ class TranslationOrchestrator:
                 state_manager=self.state_manager,
                 anime_title=anime_title
             )
+            
+            # Persist the latest progress immediately so a crash between here
+            # and state clearing still leaves a resumable checkpoint.
+            self.state_manager.save(force=True)
             
             # Apply translations
             parser.apply_translations(translations)
@@ -176,6 +181,11 @@ class TranslationOrchestrator:
                 "extracted_path": None if external_subtitle_path else extracted_path,
                 "translation_issues": errors,
                 "lines_count": lines_count,
+                "total_lines": total_lines,
+                "track_id": track_id,
+                "source_lang": source_lang,
+                "target_lang": target_lang,
+                "provider": self.config.provider,
                 "start_time": start_time,
                 "final_tokens": final_tokens,
                 "api_manager": api_manager,
@@ -187,6 +197,8 @@ class TranslationOrchestrator:
                 
         except Exception as e:
             if self.is_paused or self.should_cancel:
+                # Persist whatever progress was made so it can be resumed.
+                self.state_manager.save(force=True)
                 return # Exited cleanly due to user action
             logger.error(f"Translation Error: {e}")
             if self.on_error:
@@ -198,9 +210,13 @@ class TranslationOrchestrator:
     def pause(self):
         """Pause the translation."""
         self.is_paused = True
-        self.should_cancel = True
+        # Note: do NOT set should_cancel here; pausing must stay distinct from
+        # cancelling so the worker can resume from its saved state.
         if self.active_translator:
             self.active_translator.is_paused = True
+        # Persist progress now so the pause point is resumable even if the
+        # throttled periodic save had not fired yet.
+        self.state_manager.save(force=True)
             
     def resume(self):
         """Resume from paused state (requires calling start_translation again after this or handling it via threading loop logic)."""

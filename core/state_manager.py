@@ -5,6 +5,7 @@ Handles saving and loading translation progress for pause/resume functionality.
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
 from dataclasses import dataclass, field, asdict
@@ -101,6 +102,7 @@ class StateManager:
     """
     
     STATE_FILENAME = "translation_state.json"
+    MIN_SAVE_INTERVAL = 5.0  # Seconds between disk writes during active progress
     
     def __init__(self, state_dir: Optional[str] = None):
         """
@@ -110,6 +112,7 @@ class StateManager:
             state_dir: Directory to store state files. Defaults to app directory.
         """
         self._lock = threading.RLock()
+        self._last_save_time = 0.0
         
         if state_dir:
             self.state_dir = Path(state_dir)
@@ -181,7 +184,7 @@ class StateManager:
                 external_subtitle_path=external_subtitle_path
             )
             
-            self.save()
+            self.save(force=True)
             return self.current_state
     
     def update_progress(
@@ -217,11 +220,25 @@ class StateManager:
             
             self.save()
     
-    def save(self):
-        """Save current state to file."""
+    def save(self, force: bool = False):
+        """
+        Save current state to disk.
+
+        During active progress the state file grows with every completed
+        translation, so writes are throttled to at most one per
+        ``MIN_SAVE_INTERVAL`` seconds to avoid O(n^2) rewrites on long files.
+        Pass ``force=True`` when the session pauses, is cancelled, or
+        finishes, so the latest progress is persisted immediately.
+        """
         with self._lock:
             if not self.current_state:
                 return
+            
+            if not force:
+                now = time.monotonic()
+                if now - self._last_save_time < self.MIN_SAVE_INTERVAL:
+                    return
+                self._last_save_time = now
             
             try:
                 with open(self.state_file, 'w', encoding='utf-8') as f:

@@ -13,6 +13,7 @@ from typing import Optional, Callable, Dict, Any, TypeVar
 from dataclasses import dataclass
 
 from .logger import get_logger
+from .exceptions import TranslationCancelled
 
 # Generic type for return values
 T = TypeVar('T')
@@ -57,6 +58,7 @@ class NetworkRetryHandler:
     def reset(self):
         """Reset failure counters."""
         self.consecutive_failures = 0
+        self.total_retries = 0
         self.last_error = None
     
     def calculate_delay(self, attempt: int, error: Optional[Exception] = None) -> float:
@@ -167,16 +169,21 @@ class NetworkRetryHandler:
         for attempt in range(self.config.max_retries + 1):
             try:
                 if stop_check and stop_check():
-                     raise KeyboardInterrupt("Stopped by user")
+                     raise TranslationCancelled("Stopped by user")
                 
                 if attempt > 0:
                     self.logger.info(f"Retry attempt {attempt}/{self.config.max_retries}...")
                 return func()
             except Exception as e:
                 last_error = e
+                self.consecutive_failures += 1
+                self.last_error = str(e)
                 if not self.is_retryable_error(e) or attempt == self.config.max_retries:
                     self.logger.error(f"Non-retriable error or max retries reached: {e}")
                     raise e
+                
+                # Count as an actual retry attempt
+                self.total_retries += 1
                 
                 # Calculate delay (pass error for smart retry-after parsing)
                 delay = self.calculate_delay(attempt, e)
@@ -193,7 +200,7 @@ class NetworkRetryHandler:
                 slept = 0.0
                 while slept < delay:
                     if stop_check and stop_check():
-                        raise KeyboardInterrupt("Stopped by user")
+                        raise TranslationCancelled("Stopped by user")
                     time.sleep(min(sleep_step, delay - slept))
                     slept += sleep_step
         

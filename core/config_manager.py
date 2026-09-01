@@ -24,9 +24,8 @@ class ConfigManager:
         "default_source_lang": "English",
         "default_target_lang": "Indonesian",
         "output_mode": "new_file",  # "new_file", "replace_backup", "ask"
-        "default_target_lang": "Indonesian",
-        "output_mode": "new_file",  # "new_file", "replace_backup", "ask"
         "batch_size": 25,
+        "batch_delay_seconds": 1.5,  # Delay between batches (rate-limit guard)
         "fallback_model": ""  # Model to use for fallback (e.g. "openai/gpt-3.5-turbo")
     }
     
@@ -177,6 +176,24 @@ class ConfigManager:
     @batch_size.setter
     def batch_size(self, value: int) -> None:
         pass # Batch size is now fixed
+
+    @property
+    def batch_delay_seconds(self) -> float:
+        """Delay between translation batches (rate-limit guard).
+
+        Set to 0 for local providers (e.g. Ollama) where no rate limit applies.
+        """
+        try:
+            return float(self.config.get("batch_delay_seconds", 1.5))
+        except (TypeError, ValueError):
+            return 1.5
+
+    @batch_delay_seconds.setter
+    def batch_delay_seconds(self, value: float) -> None:
+        try:
+            self.config["batch_delay_seconds"] = float(value)
+        except (TypeError, ValueError):
+            pass  # Ignore invalid values, keep the previous setting
 
     @property
     def fallback_model(self) -> str:

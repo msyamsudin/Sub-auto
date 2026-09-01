@@ -3,57 +3,24 @@ Translator for Sub-auto
 Handles translation of subtitle text using LLM providers.
 """
 
-from typing import List, Tuple, Optional, Callable, Dict, Any, TypeVar
-from dataclasses import dataclass, field
-import threading
+from typing import List, Tuple, Optional, Callable, Dict, Any
 import time
-import re
 
 from .subtitle_parser import SubtitleLine
 from .logger import get_logger
 from .llm_provider import PolicyViolationError
+from .exceptions import TranslationCancelled
 from .style_handler import StyleHandler
 from .retry_handler import NetworkRetryHandler, RetryConfig
 from .model_manager import ModelManager, get_api_manager
 from .prompt_manager import PromptManager
-
-# Generic type for return values
-T = TypeVar('T')
-
-
-@dataclass
-class TokenUsage:
-    """Tracks token usage during translation."""
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-    _lock: threading.Lock = field(default_factory=threading.Lock)
-    
-    def add(self, prompt: int = 0, completion: int = 0):
-        """Add tokens to the usage."""
-        with self._lock:
-            self.prompt_tokens += prompt
-            self.completion_tokens += completion
-            self.total_tokens = self.prompt_tokens + self.completion_tokens
-    
-    def reset(self):
-        """Reset token counts."""
-        with self._lock:
-            self.prompt_tokens = 0
-            self.completion_tokens = 0
-            self.total_tokens = 0
-    
-    def __str__(self) -> str:
-        return f"Tokens: {self.total_tokens:,} (prompt: {self.prompt_tokens:,}, completion: {self.completion_tokens:,})"
-
-
-@dataclass
-class TranslationResult:
-    """Result of a translation operation."""
-    success: bool
-    translated_lines: List[Tuple[int, str]]  # (index, translated_text)
-    error_message: str = ""
-    tokens_used: TokenUsage = field(default_factory=TokenUsage)
+from .batch_processor import (
+    TokenUsage,
+    TranslationResult,
+    estimate_tokens,
+    parse_translation_response,
+    translate_with_recovery,
+)
 
 
 class Translator:
@@ -183,7 +150,7 @@ class Translator:
         )
         
         # Estimate prompt tokens (rough estimate: ~4 chars per token)
-        estimated_prompt_tokens = len(prompt) // 4
+        estimated_prompt_tokens = estimate_tokens(prompt)
         self.logger.info(f"📝 Prompt size: {len(prompt)} chars (~{estimated_prompt_tokens} tokens)")
         
         def do_translation():
@@ -192,18 +159,18 @@ class Translator:
                 raise ValueError("Provider not initialized")
             
             self.logger.info(f"🌐 Calling API: {self.current_model_name}")
-            response_text = self.model_manager.provider.generate_content(
+            generation = self.model_manager.provider.generate_content(
                 self.current_model_name,
                 prompt
             )
             
-            if not response_text:
+            if not generation.text:
                 raise ValueError("Empty response from API")
             
             if self.should_stop:
-                raise KeyboardInterrupt("Stopped by user")
+                raise TranslationCancelled("Stopped by user")
             
-            return response_text
+            return generation
         
         def on_retry_internal(attempt: int, delay: float, error_msg: str):
             """Internal retry callback."""
@@ -215,25 +182,32 @@ class Translator:
         try:
             # Use retry handler for robust API calls
             api_start = time.time()
-            response_text = self.retry_handler.execute_with_retry(
+            generation = self.retry_handler.execute_with_retry(
                 do_translation,
                 on_retry=on_retry_internal,
                 stop_check=lambda: self.should_stop
             )
             api_elapsed = time.time() - api_start
+            response_text = generation.text
             
-            # Track tokens
-            estimated_completion_tokens = len(response_text) // 4
+            # Track tokens: prefer real usage reported by the provider, fall
+            # back to a rough estimate when the provider omits usage data.
+            prompt_tokens = generation.prompt_tokens or estimated_prompt_tokens
+            completion_tokens = generation.completion_tokens or estimate_tokens(response_text)
             batch_tokens.add(
-                prompt=estimated_prompt_tokens,
-                completion=estimated_completion_tokens
+                prompt=prompt_tokens,
+                completion=completion_tokens
             )
             self.token_usage.add(
-                prompt=estimated_prompt_tokens,
-                completion=estimated_completion_tokens
+                prompt=prompt_tokens,
+                completion=completion_tokens
             )
             
-            self.logger.info(f"✅ API response received: {len(response_text)} chars (~{estimated_completion_tokens} tokens) in {api_elapsed:.2f}s")
+            self.logger.info(
+                f"✅ API response received: {len(response_text)} chars "
+                f"({prompt_tokens:,} prompt + {completion_tokens:,} completion tokens) "
+                f"in {api_elapsed:.2f}s"
+            )
             
             # Parse response
             translated = self._parse_response(response_text, lines)
@@ -265,6 +239,11 @@ class Translator:
                     tokens_used=batch_tokens,
                 )
                     
+        except TranslationCancelled:
+            # User-initiated cancellation: propagate cleanly so the worker
+            # thread exits without being treated as a translation failure.
+            raise
+
         except PolicyViolationError as e:
             # Handle Policy Violation (Fallback)
             self.logger.warning(f"⚠️ Policy Violation detected with model {self.current_model_name}: {e}")
@@ -298,22 +277,24 @@ class Translator:
                     fallback_start = time.time()
                     self.logger.info(f"🌐 Calling API (Fallback): {fallback_model}")
                     
-                    response_text = self.model_manager.provider.generate_content(
+                    generation = self.model_manager.provider.generate_content(
                         fallback_model,
                         prompt
                     )
+                    response_text = generation.text
                     
                     fallback_elapsed = time.time() - fallback_start
                     
-                    # Track tokens (approx info)
-                    estimated_completion_tokens = len(response_text) // 4
+                    # Track tokens: prefer real usage, fall back to estimate
+                    prompt_tokens = generation.prompt_tokens or estimated_prompt_tokens
+                    completion_tokens = generation.completion_tokens or estimate_tokens(response_text)
                     batch_tokens.add(
-                        prompt=estimated_prompt_tokens,
-                        completion=estimated_completion_tokens
+                        prompt=prompt_tokens,
+                        completion=completion_tokens
                     )
                     self.token_usage.add(
-                        prompt=estimated_prompt_tokens,
-                        completion=estimated_completion_tokens
+                        prompt=prompt_tokens,
+                        completion=completion_tokens
                     )
                     
                     self.logger.info(f"✅ Fallback response received: {len(response_text)} chars in {fallback_elapsed:.2f}s")
@@ -371,26 +352,7 @@ class Translator:
         original_lines: List[SubtitleLine]
     ) -> List[Tuple[int, str]]:
         """Parse the API response to extract translations."""
-        results = []
-        
-        # Pattern to match [NUMBER] text
-        pattern = r'\[(\d+)\]\s*(.+?)(?=\n\[\d+\]|\Z)'
-        matches = re.findall(pattern, response_text, re.DOTALL)
-        
-        # Create a mapping of expected indices
-        expected_indices = {line.index for line in original_lines}
-        
-        for match in matches:
-            try:
-                index = int(match[0])
-                text = match[1].strip()
-                
-                if index in expected_indices:
-                    results.append((index, text))
-            except (ValueError, IndexError):
-                continue
-        
-        return results
+        return parse_translation_response(response_text, original_lines)
 
     def _translate_batch_with_recovery(
         self,
@@ -403,66 +365,24 @@ class Translator:
         max_recovery_rounds: int = 2,
     ) -> Tuple[List[Tuple[int, str]], List[SubtitleLine], Dict[int, str], TokenUsage]:
         """Retry missing lines with progressively smaller batches."""
-        resolved: Dict[int, str] = {}
-        pending = list(lines)
-        failure_reasons: Dict[int, str] = {}
-        recovery_tokens = TokenUsage()
 
-        for round_index in range(max_recovery_rounds + 1):
-            if not pending or self.should_stop:
-                break
+        def translate_chunk(chunk: List[SubtitleLine]) -> TranslationResult:
+            return self.translate_batch(
+                lines=chunk,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                context_lines=context_lines,
+                anime_title=anime_title,
+            )
 
-            if round_index == 0:
-                chunks = [pending]
-            else:
-                divisor = 2 ** round_index
-                chunk_size = max(1, (len(pending) + divisor - 1) // divisor)
-                chunks = [pending[i:i + chunk_size] for i in range(0, len(pending), chunk_size)]
-                message = (
-                    f"Automatic recovery {round_index}/{max_recovery_rounds}: "
-                    f"retrying {len(pending)} missing line(s) in {len(chunks)} smaller batch(es)..."
-                )
-                self.logger.warning(message)
-                if on_recovery:
-                    on_recovery(message)
-
-            next_pending: List[SubtitleLine] = []
-            for chunk in chunks:
-                if self.should_stop:
-                    next_pending.extend(chunk)
-                    continue
-
-                result = self.translate_batch(
-                    lines=chunk,
-                    source_lang=source_lang,
-                    target_lang=target_lang,
-                    context_lines=context_lines,
-                    anime_title=anime_title,
-                )
-                recovery_tokens.add(
-                    prompt=result.tokens_used.prompt_tokens,
-                    completion=result.tokens_used.completion_tokens,
-                )
-
-                returned = {index: text for index, text in result.translated_lines}
-                for line in chunk:
-                    if line.index in returned:
-                        resolved[line.index] = returned[line.index]
-                        failure_reasons.pop(line.index, None)
-                    else:
-                        next_pending.append(line)
-                        failure_reasons[line.index] = (
-                            result.error_message or "Model response did not include this line"
-                        )
-
-            pending = next_pending
-
-        translations = [
-            (line.index, resolved[line.index])
-            for line in lines
-            if line.index in resolved
-        ]
-        return translations, pending, failure_reasons, recovery_tokens
+        return translate_with_recovery(
+            translate_fn=translate_chunk,
+            lines=lines,
+            stop_check=lambda: self.should_stop,
+            logger=self.logger,
+            on_recovery=on_recovery,
+            max_recovery_rounds=max_recovery_rounds,
+        )
     
     def translate_all(
         self,
@@ -510,6 +430,11 @@ class Translator:
         total_batches = len(batches)
         
         self.logger.info(f"📦 Total batches: {total_batches}")
+        
+        # Delay between batches to avoid rate limits (configurable; set to 0
+        # for local providers like Ollama).
+        batch_delay = getattr(self.model_manager.config, "batch_delay_seconds", 1.5) or 0.0
+        batch_delay = max(0.0, float(batch_delay))
         
         context_lines = []
         
@@ -587,8 +512,9 @@ class Translator:
                 if line.index not in completed_indices:
                     all_translations.append((line.index, line.text))
             
-            # Delay between batches to avoid rate limits
-            time_module.sleep(1.5)
+            # Delay between batches to avoid rate limits (skipped after the last batch)
+            if batch_idx < total_batches - 1 and batch_delay > 0:
+                time_module.sleep(batch_delay)
         
         all_translations.sort(key=lambda x: x[0])
         

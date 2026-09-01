@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sub-auto"
+description = "Automated MKV subtitle extraction, translation and replacement using LLMs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Syam" }]
+keywords = ["subtitle", "mkv", "translation", "llm", "anime"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = [
+    "customtkinter>=5.2.0",
+    "pysubs2>=1.6.0",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+sub-auto = "main:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "core.version.__version__" }
+
+[tool.setuptools]
+packages = [
+    "core",
+    "gui",
+    "gui.components",
+    "gui.controllers",
+    "gui.services",
+    "gui.state",
+    "gui.views",
+]
